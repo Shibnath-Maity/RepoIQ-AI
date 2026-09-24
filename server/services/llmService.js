@@ -13,7 +13,6 @@ const ai = new GoogleGenAI({
 });
 
 // Config is env-overridable so you can tune per-environment without touching code.
-// const MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const MODEL = process.env.GEMINI_MODEL || "gemini-3.6-flash";
 const TEMPERATURE = clampNumber(process.env.GEMINI_TEMPERATURE, 0.2, 0, 2);
 const MAX_OUTPUT_TOKENS = clampNumber(process.env.GEMINI_MAX_OUTPUT_TOKENS, 4096, 1, 65536);
@@ -437,4 +436,7 @@ async function generateJSON(prompt) {
 module.exports = {
   generateAnswer,
   generateJSON,
+  // Exposed so other services (e.g. the bug solver) can report the real
+  // model that answered instead of a hardcoded/guessed label.
+  MODEL_NAME: MODEL,
 };

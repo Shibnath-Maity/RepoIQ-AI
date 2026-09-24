@@ -15,6 +15,7 @@ import PullRequestCard from "../components/PullRequestCard";
 import { TYPE_DOT } from "../constants/commitTypes";
 import { useAnalysis } from "../context/AnalysisContext";
 import API from "../services/api";
+import ConstellationField from "../components/ui/constellation-field";
 
 const PAGE_SIZE = 10;
 
@@ -201,14 +202,24 @@ export default function Timeline() {
 
   if (!rawCommits.length && !pullRequests.length && !prLoading) {
     return (
-      <div className="bg-slate-900/60 backdrop-blur-md rounded-2xl border border-slate-800 p-8 text-center max-w-md mx-auto my-12 shadow-xl">
-        <div className="w-12 h-12 rounded-2xl bg-slate-800/80 border border-slate-700/60 text-slate-400 flex items-center justify-center mx-auto mb-4">
-          <History size={24} />
+      <div className="relative min-h-screen">
+        {/* Animated constellation background */}
+        <ConstellationField
+          mode="dark"
+          density={0.9}
+          speed={0.8}
+          className="fixed inset-0 z-0 h-full w-full pointer-events-none"
+        />
+
+        <div className="relative z-10 bg-slate-900/60 backdrop-blur-md rounded-2xl border border-slate-800 p-8 text-center max-w-md mx-auto my-12 shadow-xl">
+          <div className="w-12 h-12 rounded-2xl bg-slate-800/80 border border-slate-700/60 text-slate-400 flex items-center justify-center mx-auto mb-4">
+            <History size={24} />
+          </div>
+          <h2 className="text-lg font-bold text-white">No Activity Found</h2>
+          <p className="text-xs text-slate-400 mt-2 leading-relaxed">
+            This repository doesn't contain any timeline activity yet, or the repository analysis is currently processing.
+          </p>
         </div>
-        <h2 className="text-lg font-bold text-white">No Activity Found</h2>
-        <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-          This repository doesn't contain any timeline activity yet, or the repository analysis is currently processing.
-        </p>
       </div>
     );
   }
@@ -216,136 +227,146 @@ export default function Timeline() {
   const hasMoreCommits = visibleCount < commitTimeline.length;
 
   return (
-    <div className="space-y-6">
-      {/* Activity Overview Header Visualizations */}
-      <CommitCalendar timeline={rawCommits} />
-      <CommitActivityGraph timeline={graphTimeline} />
+    <div className="relative min-h-screen">
+      {/* Animated constellation background */}
+      <ConstellationField
+        mode="dark"
+        density={0.9}
+        speed={0.8}
+        className="fixed inset-0 z-0 h-full w-full pointer-events-none"
+      />
 
-      {/* SECTION 1: Commit Timeline */}
-      <div className="bg-slate-900/60 backdrop-blur-md rounded-2xl shadow-lg border border-slate-800/80 p-6">
-        <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800/80">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-orange-500/10 text-orange-400 rounded-xl border border-orange-500/20">
-              <GitCommit size={20} />
-            </div>
-            <h2 className="text-lg font-bold text-white tracking-tight">Commit Timeline</h2>
-          </div>
-          <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-800/80 text-slate-400 border border-slate-700/50">
-            {commitTimeline.length} commits
-          </span>
-        </div>
+      <div className="relative z-10 space-y-6">
+        {/* Activity Overview Header Visualizations */}
+        <CommitCalendar timeline={rawCommits} />
+        <CommitActivityGraph timeline={graphTimeline} />
 
-        <div>
-          {groupedCommits.map((group) => (
-            <div key={group.key} className="mb-8 last:mb-0">
-              <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
-                {group.label}
-              </p>
-
-              <div className="relative border-l-2 border-slate-800/80 ml-3.5 space-y-6">
-                {group.commits.map((commit) => {
-                  const dotColor = TYPE_DOT[commit.type] || "bg-indigo-500";
-
-                  return (
-                    <div
-                      key={commit.hash}
-                      className="ml-6 relative group"
-                    >
-                      {/* Timeline Dot */}
-                      <span
-                        className={`absolute -left-[31px] top-2 w-3.5 h-3.5 ${dotColor} rounded-full ring-4 ring-slate-900 shadow-sm transition-transform duration-200 group-hover:scale-125`}
-                      />
-
-                      <div className="rounded-xl p-4 -mx-2 transition-all duration-200 border border-transparent hover:border-slate-800 hover:bg-slate-800/40">
-                        <div className="flex items-center justify-between gap-3 flex-wrap">
-                          <p
-                            className="text-xs text-slate-400 font-medium flex items-center gap-1.5"
-                            title={commit._date ? commit._date.toLocaleString() : undefined}
-                          >
-                            <Clock size={12} className="text-slate-500" />
-                            {relativeTime(commit._date)}
-                          </p>
-
-                          {commit.type && (
-                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700/50">
-                              {commit.type}
-                            </span>
-                          )}
-                        </div>
-
-                        <h3 className="font-bold text-slate-100 text-sm mt-2 flex items-center gap-2 group-hover:text-orange-400 transition-colors">
-                          <GitCommit size={15} className="text-slate-500 shrink-0" />
-                          {commit.message || "No commit message"}
-                        </h3>
-
-                        <div className="flex items-center gap-2 mt-2.5">
-                          <span className="w-5 h-5 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 text-white text-[10px] font-extrabold flex items-center justify-center shrink-0 shadow-xs">
-                            {commit.initials}
-                          </span>
-
-                          <p className="text-xs text-slate-400 font-medium">
-                            {commit.author || "Unknown author"}
-                          </p>
-                        </div>
-
-                        <CommitHash hash={commit.hash} />
-                      </div>
-                    </div>
-                  );
-                })}
+        {/* SECTION 1: Commit Timeline */}
+        <div className="bg-slate-900/60 backdrop-blur-md rounded-2xl shadow-lg border border-slate-800/80 p-6">
+          <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800/80">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-orange-500/10 text-orange-400 rounded-xl border border-orange-500/20">
+                <GitCommit size={20} />
               </div>
+              <h2 className="text-lg font-bold text-white tracking-tight">Commit Timeline</h2>
             </div>
-          ))}
-        </div>
-
-        {hasMoreCommits && (
-          <button
-            onClick={() =>
-              setVisibleCount((v) => Math.min(v + PAGE_SIZE, commitTimeline.length))
-            }
-            className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-slate-800 bg-slate-900/80 text-xs font-bold text-slate-300 hover:bg-slate-800 hover:border-slate-700 hover:text-white transition-all duration-200 mt-6 shadow-sm active:scale-[0.99]"
-          >
-            <span>Show more commits</span>
-            <ChevronDown size={14} />
-          </button>
-        )}
-      </div>
-
-      {/* SECTION 2: Standalone Pull Requests */}
-      <div className="bg-slate-900/60 backdrop-blur-md rounded-2xl shadow-lg border border-slate-800/80 p-6">
-        <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800/80">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-purple-500/10 text-purple-400 rounded-xl border border-purple-500/20">
-              <GitPullRequest size={20} />
-            </div>
-            <h2 className="text-lg font-bold text-white tracking-tight">Pull Requests</h2>
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-800/80 text-slate-400 border border-slate-700/50">
+              {commitTimeline.length} commits
+            </span>
           </div>
-          <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-800/80 text-slate-400 border border-slate-700/50">
-            {pullRequests.length} PRs
-          </span>
-        </div>
 
-        {prLoading ? (
-          <div className="flex items-center justify-center py-12 text-xs text-slate-400 font-medium">
-            <Loader2 size={16} className="mr-2 animate-spin text-purple-400" />
-            Loading pull requests...
-          </div>
-        ) : pullRequests.length === 0 ? (
-          <div className="text-center py-10 rounded-xl bg-slate-900/40 border border-slate-800/50">
-            <GitPullRequest size={28} className="mx-auto text-slate-600 mb-2.5" />
-            <p className="text-xs font-bold text-slate-300">No pull requests found</p>
-            <p className="text-[11px] text-slate-500 mt-1">
-              This repository doesn't have any open or closed pull requests available.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {pullRequests.map((pr) => (
-              <PullRequestCard key={pr.id || pr.number} pullRequest={pr} />
+          <div>
+            {groupedCommits.map((group) => (
+              <div key={group.key} className="mb-8 last:mb-0">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-4 flex items-center gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-orange-500" />
+                  {group.label}
+                </p>
+
+                <div className="relative border-l-2 border-slate-800/80 ml-3.5 space-y-6">
+                  {group.commits.map((commit) => {
+                    const dotColor = TYPE_DOT[commit.type] || "bg-indigo-500";
+
+                    return (
+                      <div
+                        key={commit.hash}
+                        className="ml-6 relative group"
+                      >
+                        {/* Timeline Dot */}
+                        <span
+                          className={`absolute -left-[31px] top-2 w-3.5 h-3.5 ${dotColor} rounded-full ring-4 ring-slate-900 shadow-sm transition-transform duration-200 group-hover:scale-125`}
+                        />
+
+                        <div className="rounded-xl p-4 -mx-2 transition-all duration-200 border border-transparent hover:border-slate-800 hover:bg-slate-800/40">
+                          <div className="flex items-center justify-between gap-3 flex-wrap">
+                            <p
+                              className="text-xs text-slate-400 font-medium flex items-center gap-1.5"
+                              title={commit._date ? commit._date.toLocaleString() : undefined}
+                            >
+                              <Clock size={12} className="text-slate-500" />
+                              {relativeTime(commit._date)}
+                            </p>
+
+                            {commit.type && (
+                              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700/50">
+                                {commit.type}
+                              </span>
+                            )}
+                          </div>
+
+                          <h3 className="font-bold text-slate-100 text-sm mt-2 flex items-center gap-2 group-hover:text-orange-400 transition-colors">
+                            <GitCommit size={15} className="text-slate-500 shrink-0" />
+                            {commit.message || "No commit message"}
+                          </h3>
+
+                          <div className="flex items-center gap-2 mt-2.5">
+                            <span className="w-5 h-5 rounded-full bg-gradient-to-tr from-indigo-600 to-violet-500 text-white text-[10px] font-extrabold flex items-center justify-center shrink-0 shadow-xs">
+                              {commit.initials}
+                            </span>
+
+                            <p className="text-xs text-slate-400 font-medium">
+                              {commit.author || "Unknown author"}
+                            </p>
+                          </div>
+
+                          <CommitHash hash={commit.hash} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             ))}
           </div>
-        )}
+
+          {hasMoreCommits && (
+            <button
+              onClick={() =>
+                setVisibleCount((v) => Math.min(v + PAGE_SIZE, commitTimeline.length))
+              }
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl border border-slate-800 bg-slate-900/80 text-xs font-bold text-slate-300 hover:bg-slate-800 hover:border-slate-700 hover:text-white transition-all duration-200 mt-6 shadow-sm active:scale-[0.99]"
+            >
+              <span>Show more commits</span>
+              <ChevronDown size={14} />
+            </button>
+          )}
+        </div>
+
+        {/* SECTION 2: Standalone Pull Requests */}
+        <div className="bg-slate-900/60 backdrop-blur-md rounded-2xl shadow-lg border border-slate-800/80 p-6">
+          <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-800/80">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-purple-500/10 text-purple-400 rounded-xl border border-purple-500/20">
+                <GitPullRequest size={20} />
+              </div>
+              <h2 className="text-lg font-bold text-white tracking-tight">Pull Requests</h2>
+            </div>
+            <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-slate-800/80 text-slate-400 border border-slate-700/50">
+              {pullRequests.length} PRs
+            </span>
+          </div>
+
+          {prLoading ? (
+            <div className="flex items-center justify-center py-12 text-xs text-slate-400 font-medium">
+              <Loader2 size={16} className="mr-2 animate-spin text-purple-400" />
+              Loading pull requests...
+            </div>
+          ) : pullRequests.length === 0 ? (
+            <div className="text-center py-10 rounded-xl bg-slate-900/40 border border-slate-800/50">
+              <GitPullRequest size={28} className="mx-auto text-slate-600 mb-2.5" />
+              <p className="text-xs font-bold text-slate-300">No pull requests found</p>
+              <p className="text-[11px] text-slate-500 mt-1">
+                This repository doesn't have any open or closed pull requests available.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {pullRequests.map((pr) => (
+                <PullRequestCard key={pr.id || pr.number} pullRequest={pr} />
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

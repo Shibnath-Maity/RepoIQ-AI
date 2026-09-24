@@ -12,6 +12,7 @@ import {
   MostModifiedFilesCard,
 } from "../components/ContributorInsightCards";
 import TimeRangeFilter from "../components/TimeRangeFilter";
+import ConstellationField from "../components/ui/constellation-field";
 import {
   Users,
   AlertCircle,
@@ -319,12 +320,20 @@ function Contributors() {
   };
 
   return (
-    <div className="min-h-screen bg-[#0A0D12] text-[#E7EAEF] antialiased selection:bg-sky-500/20 selection:text-sky-100 [font-feature-settings:'cv11','ss01'] [font-variant-numeric:tabular-nums]">
-      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 space-y-5 sm:space-y-6">
+    <div className="relative min-h-screen text-[#E7EAEF] antialiased selection:bg-sky-500/20 selection:text-sky-100 [font-feature-settings:'cv11','ss01'] [font-variant-numeric:tabular-nums]">
+      {/* Animated constellation background */}
+      <ConstellationField
+        mode="dark"
+        density={0.9}
+        speed={0.8}
+        className="fixed inset-0 z-0 h-full w-full pointer-events-none"
+      />
+
+      <div className="relative z-10 max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-5 sm:py-8 space-y-5 sm:space-y-6">
         {/* Header */}
         <header className="flex flex-col gap-4 pb-5 border-b border-white/[0.08] sm:flex-row sm:items-end sm:justify-between">
           <div className="flex items-start gap-3 min-w-0">
-            <div className="shrink-0 flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-[10px] bg-gradient-to-b from-white/[0.06] to-transparent bg-[#10151C] border border-white/[0.08] text-sky-400/90">
+            <div className="shrink-0 flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-[10px] bg-gradient-to-b from-white/[0.06] to-transparent bg-[#10151C]/80 backdrop-blur-sm border border-white/[0.08] text-sky-400/90">
               <Users size={18} strokeWidth={1.75} />
             </div>
 
@@ -358,7 +367,7 @@ function Contributors() {
         {!analysis ? (
           /* Empty State */
           <div className="flex flex-col items-center justify-center text-center py-20 sm:py-24 px-6">
-            <div className="bg-[#10151C] text-[#7C8698] p-3 rounded-[12px] border border-white/[0.08] mb-4">
+            <div className="bg-[#10151C]/80 backdrop-blur-sm text-[#7C8698] p-3 rounded-[12px] border border-white/[0.08] mb-4">
               <AlertCircle size={22} strokeWidth={1.75} />
             </div>
             <h3 className="text-base font-semibold text-white">
@@ -380,7 +389,7 @@ function Contributors() {
             </section>
 
             {/* Info banner */}
-            <div className="flex items-center gap-2.5 rounded-[10px] border border-white/[0.06] bg-white/[0.02] px-3.5 py-2.5 text-[12.5px] text-[#7C8698]">
+            <div className="flex items-center gap-2.5 rounded-[10px] border border-white/[0.06] bg-white/[0.02] backdrop-blur-sm px-3.5 py-2.5 text-[12.5px] text-[#7C8698]">
               <Info size={13} strokeWidth={2} className="text-[#4C5666] shrink-0" />
               <span className="leading-snug">
                 Select a contributor below to inspect individual activity and
@@ -390,7 +399,7 @@ function Contributors() {
 
             {/* Leaderboard & Distribution */}
             <section className="grid grid-cols-1 xl:grid-cols-12 gap-4">
-              <div className="xl:col-span-7 bg-[#10151C] rounded-[14px] border border-white/[0.08] min-w-0 overflow-hidden">
+              <div className="xl:col-span-7 bg-[#10151C]/80 backdrop-blur-sm rounded-[14px] border border-white/[0.08] min-w-0 overflow-hidden">
                 <TopContributors
                   contributors={contributorList}
                   aggregates={aggregates}
@@ -399,7 +408,7 @@ function Contributors() {
                 />
               </div>
 
-              <div className="xl:col-span-5 bg-[#10151C] rounded-[14px] border border-white/[0.08] min-w-0 overflow-hidden">
+              <div className="xl:col-span-5 bg-[#10151C]/80 backdrop-blur-sm rounded-[14px] border border-white/[0.08] min-w-0 overflow-hidden">
                 <ContributionDistribution
                   contributors={contributorList}
                 />
@@ -409,7 +418,7 @@ function Contributors() {
             {/* Selected Contributor Profile */}
             {activeContributor ? (
               <section className="space-y-4 pt-1">
-                <div className="rounded-[14px] bg-[#10151C] border border-sky-400/20 overflow-hidden">
+                <div className="rounded-[14px] bg-[#10151C]/80 backdrop-blur-sm border border-sky-400/20 overflow-hidden">
                   {/* Profile header: identity + rank/navigation */}
                   <div className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5 border-b border-white/[0.08]">
                     <div className="flex items-center gap-3 min-w-0">
@@ -483,7 +492,7 @@ function Contributors() {
                 </div>
               </section>
             ) : (
-              <div className="py-16 text-center bg-[#10151C]/60 rounded-[14px] border border-dashed border-white/[0.08]">
+              <div className="py-16 text-center bg-[#10151C]/60 backdrop-blur-sm rounded-[14px] border border-dashed border-white/[0.08]">
                 <p className="text-sm text-[#7C8698]">
                   Select a contributor above to load their developer profile.
                 </p>

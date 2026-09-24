@@ -11,6 +11,7 @@ import HotspotEmptyState from "../components/Hotspots/HotspotEmptyState";
 import { useAnalysis } from "../context/AnalysisContext";
 import { Flame, GitFork, Sparkles } from "lucide-react";
 import { FaGithub } from "react-icons/fa";
+import ConstellationField from "../components/ui/constellation-field";
 
 const ITEMS_PER_PAGE = 10;
 
@@ -240,8 +241,16 @@ export default function Hotspots() {
   }, [filteredHotspots, handleSelectHotspot, selectedFile]);
 
   return (
-    <div className="min-h-dvh bg-slate-950 font-sans text-slate-100 antialiased flex flex-col lg:h-dvh lg:overflow-hidden">
-      <div className="mx-auto flex w-full max-w-[1700px] flex-1 flex-col gap-3 px-3 py-3 sm:gap-4 sm:px-6 sm:py-4 lg:min-h-0">
+    <div className="relative min-h-dvh font-sans text-slate-100 antialiased flex flex-col lg:h-dvh lg:overflow-hidden">
+      {/* Animated constellation background */}
+      <ConstellationField
+        mode="dark"
+        density={0.9}
+        speed={0.8}
+        className="fixed inset-0 z-0 h-full w-full pointer-events-none"
+      />
+
+      <div className="relative z-10 mx-auto flex w-full max-w-[1700px] flex-1 flex-col gap-3 px-3 py-3 sm:gap-4 sm:px-6 sm:py-4 lg:min-h-0">
         {/* Header Bar */}
         <header className="shrink-0 border-b border-slate-800 pb-3">
           <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-3">

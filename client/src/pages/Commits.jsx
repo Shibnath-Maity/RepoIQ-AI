@@ -5,6 +5,7 @@ import Pagination from "../components/Pagination";
 import CommitTypeChart from "../components/CommitTypeChart";
 import CommitDetails from "../components/CommitDetails";
 import CommitStatistics from "../components/CommitStatistics";
+import ConstellationField from "../components/ui/constellation-field";
 import {
   GitCommit,
   Search,
@@ -131,8 +132,14 @@ function Commits() {
 
   if (!analysis) {
     return (
-      <div className="flex flex-col justify-center items-center min-h-screen bg-slate-950 text-slate-300 px-6">
-        <div className="flex flex-col items-center max-w-xs text-center">
+      <div className="relative flex flex-col justify-center items-center min-h-screen text-slate-300 px-6 overflow-hidden">
+        <ConstellationField
+          mode="dark"
+          density={0.9}
+          speed={0.8}
+          className="fixed inset-0 z-0 h-full w-full pointer-events-none"
+        />
+        <div className="relative z-10 flex flex-col items-center max-w-xs text-center">
           <GitCommit className="h-7 w-7 text-slate-600 mb-4" />
           <h2 className="text-base font-semibold text-slate-200">
             No repository analyzed
@@ -146,8 +153,16 @@ function Commits() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
+    <div className="relative min-h-screen text-slate-100">
+      {/* Animated constellation background */}
+      <ConstellationField
+        mode="dark"
+        density={0.9}
+        speed={0.8}
+        className="fixed inset-0 z-0 h-full w-full pointer-events-none"
+      />
+
+      <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6">
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800/70">
           <div className="flex items-center gap-2.5">
@@ -180,7 +195,7 @@ function Commits() {
               setSearchTerm(e.target.value);
               setCurrentPage(1);
             }}
-            className="w-full bg-slate-900 border border-slate-800 focus:border-blue-600/70 rounded-md py-2 pl-9 pr-8 text-sm text-slate-200 placeholder-slate-500 outline-none transition-colors"
+            className="w-full bg-slate-900/70 backdrop-blur-sm border border-slate-800 focus:border-blue-600/70 rounded-md py-2 pl-9 pr-8 text-sm text-slate-200 placeholder-slate-500 outline-none transition-colors"
           />
           {searchTerm && (
             <button
@@ -195,13 +210,13 @@ function Commits() {
 
         {/* Statistics */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          <div className="border border-slate-800/70 rounded-lg p-4">
+          <div className="border border-slate-800/70 rounded-lg p-4 bg-slate-950/60 backdrop-blur-sm">
             <h3 className="text-xs font-medium text-slate-400 mb-3">
               Commit types
             </h3>
             <CommitTypeChart commits={commits} />
           </div>
-          <div className="border border-slate-800/70 rounded-lg p-4">
+          <div className="border border-slate-800/70 rounded-lg p-4 bg-slate-950/60 backdrop-blur-sm">
             <h3 className="text-xs font-medium text-slate-400 mb-3">
               Commit statistics
             </h3>
@@ -221,7 +236,7 @@ function Commits() {
           </div>
 
           {filteredCommits.length === 0 ? (
-            <div className="border border-slate-800/70 rounded-lg py-14 text-center">
+            <div className="border border-slate-800/70 rounded-lg py-14 text-center bg-slate-950/60 backdrop-blur-sm">
               <FilterX size={22} className="mx-auto text-slate-600 mb-3" />
               <p className="text-sm font-medium text-slate-300">
                 No matching commits found
@@ -237,7 +252,7 @@ function Commits() {
               </button>
             </div>
           ) : (
-            <div className="border border-slate-800/70 rounded-lg divide-y divide-slate-800/70 overflow-hidden">
+            <div className="border border-slate-800/70 rounded-lg divide-y divide-slate-800/70 overflow-hidden bg-slate-950/60 backdrop-blur-sm">
               {paginatedCommits.map((commit) => (
                 <button
                   key={commit.hash ?? `${commit.author_name}-${commit.date}`}

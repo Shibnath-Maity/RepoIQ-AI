@@ -97,6 +97,11 @@ const CONFIG_EXTENSIONS = new Set([
 const CANDIDATE_POOL_SIZE =
   Number(process.env.RAG_CANDIDATE_POOL_SIZE) || 30;
 
+// Minimum candidates to fetch even when we're targeting one specific
+// file — 3 was too tight and starved the ranker of chunks whenever a
+// larger file had been split into more than 3 pieces at index time.
+const MIN_TARGET_FILE_POOL = 8;
+
 // ==========================================
 // Embedding input types
 // ==========================================
@@ -969,6 +974,24 @@ function logRanking(finalResults) {
 }
 
 // ==========================================
+// Run a Chroma vector query for a given where-clause
+// ==========================================
+
+async function runChromaQuery(collection, queryEmbedding, nResults, where) {
+  const results = await collection.query({
+    queryEmbeddings: [queryEmbedding],
+    nResults,
+    where,
+  });
+
+  return {
+    documents: results.documents?.[0] || [],
+    metadatas: results.metadatas?.[0] || [],
+    distances: results.distances?.[0] || [],
+  };
+}
+
+// ==========================================
 // Search Repository Knowledge
 // ==========================================
 
@@ -1005,7 +1028,7 @@ async function searchDocuments(
     // Build filters
     // ==========================================
 
-    const filterConditions = [
+    const baseFilterConditions = [
       {
         repositoryId:
           String(repositoryId),
@@ -1013,60 +1036,79 @@ async function searchDocuments(
     ];
 
     if (userId) {
-      filterConditions.push({
+      baseFilterConditions.push({
         userId: String(userId),
       });
     }
 
     if (indexVersion) {
-      filterConditions.push({
+      baseFilterConditions.push({
         indexVersion:
           String(indexVersion),
       });
     }
 
-    if (targetFile) {
-      filterConditions.push({
-        fileName:
-          String(targetFile),
-      });
-    }
-
-    const where =
-      filterConditions.length === 1
-        ? filterConditions[0]
-        : {
-            $and: filterConditions,
-          };
+    const buildWhere = (conditions) =>
+      conditions.length === 1
+        ? conditions[0]
+        : { $and: conditions };
 
     // ==========================================
     // Chroma Vector Search
     // ==========================================
+    // A `targetFile` used to hard-limit nResults to 3 AND filter on an
+    // exact `fileName` match. If the indexed metadata's fileName doesn't
+    // match byte-for-byte (different casing, a stale index, etc.) that
+    // filter silently returns zero documents and the whole pipeline reports
+    // "Insufficient repository context" even though the repo is indexed
+    // fine. We now (a) fetch a real pool of candidates instead of just 3,
+    // and (b) fall back to an un-filtered semantic search if the exact
+    // filename filter comes back empty, instead of giving up.
+    // ==========================================
 
-    const results =
-      await collection.query({
-        queryEmbeddings: [
+    let documents = [];
+    let metadatas = [];
+    let distances = [];
+
+    if (targetFile) {
+      const exactWhere = buildWhere([
+        ...baseFilterConditions,
+        { fileName: String(targetFile) },
+      ]);
+
+      const exactPool = Math.max(limit, MIN_TARGET_FILE_POOL);
+
+      ({ documents, metadatas, distances } = await runChromaQuery(
+        collection,
+        queryEmbedding,
+        exactPool,
+        exactWhere
+      ));
+
+      if (documents.length === 0) {
+        console.log(
+          `⚠️ No chunks matched fileName="${targetFile}" exactly — retrying with a broader semantic search.`
+        );
+
+        const broadWhere = buildWhere(baseFilterConditions);
+
+        ({ documents, metadatas, distances } = await runChromaQuery(
+          collection,
           queryEmbedding,
-        ],
+          CANDIDATE_POOL_SIZE,
+          broadWhere
+        ));
+      }
+    } else {
+      const where = buildWhere(baseFilterConditions);
 
-        nResults: targetFile
-          ? 3
-          : CANDIDATE_POOL_SIZE,
-
-        where,
-      });
-
-    const documents =
-      results.documents?.[0] ||
-      [];
-
-    const metadatas =
-      results.metadatas?.[0] ||
-      [];
-
-    const distances =
-      results.distances?.[0] ||
-      [];
+      ({ documents, metadatas, distances } = await runChromaQuery(
+        collection,
+        queryEmbedding,
+        CANDIDATE_POOL_SIZE,
+        where
+      ));
+    }
 
     // ==========================================
     // No results
