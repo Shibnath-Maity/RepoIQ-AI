@@ -1,7 +1,5 @@
 require("dotenv").config();
 
-console.log("GitHub Token Loaded:", !!process.env.GITHUB_TOKEN);
-
 const express = require("express");
 const cors = require("cors");
 
@@ -16,14 +14,49 @@ const debugRoutes = require("./routes/debug");
 const contributorRoute = require("./routes/contributor");
 const authRoutes = require("./routes/authRoutes");
 
-const app = express(); // ✅ Create app first
+const {
+  getRepositoryInfo,
+  getRepositoryIssues,
+} = require("./services/githubService");
+
+const app = express();
+
+// ===============================
+// Middleware
+// ===============================
+
+const allowedOrigins = [
+  "http://localhost:5173",
+  process.env.CLIENT_URL,
+].filter(Boolean);
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests without an Origin header, such as server-to-server requests.
+      if (!origin || allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Not allowed by CORS"));
+    },
+    credentials: true,
+  })
+);
+
+app.use(express.json());
+
+// ===============================
+// Database Connection
+// ===============================
 
 connectDB();
 
-app.use(cors());
-app.use(express.json());
+// ===============================
+// API Routes
+// ===============================
 
-app.use("/auth", authRoutes); // ✅ Now this is correct
+app.use("/auth", authRoutes);
 
 app.use("/repository", repositoryRoutes);
 app.use("/api", repoRoutes);
@@ -32,18 +65,22 @@ app.use("/assistant", assistantRoutes);
 app.use("/repository", debugRoutes);
 app.use("/api/qa", qaRoutes);
 app.use("/api/contributor", contributorRoute);
+
+// ===============================
+// Health Check
+// ===============================
+
 app.get("/", (req, res) => {
-  res.json({
-    message: "API Running",
+  res.status(200).json({
+    success: true,
+    message: "RepoIQ AI API is running",
+    status: "healthy",
   });
 });
 
-const PORT = 5000;
-
-const {
-  getRepositoryInfo,
-  getRepositoryIssues,
-} = require("./services/githubService");
+// ===============================
+// Test GitHub Issues Endpoint
+// ===============================
 
 app.get("/test-issues", async (req, res) => {
   try {
@@ -53,16 +90,28 @@ app.get("/test-issues", async (req, res) => {
 
     const issues = await getRepositoryIssues(repo.owner, repo.repo);
 
-    res.json({
+    res.status(200).json({
+      success: true,
       repository: repo.name,
       issueCount: issues.length,
-      firstIssue: issues[0],
+      firstIssue: issues[0] || null,
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error("Test issues error:", err.message);
+
+    res.status(500).json({
+      success: false,
+      error: "Failed to fetch repository issues",
+    });
   }
 });
 
+// ===============================
+// Server
+// ===============================
+
+const PORT = process.env.PORT || 5000;
+
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`RepoIQ AI server running on port ${PORT}`);
 });

@@ -1,8 +1,8 @@
+
 import React, { useEffect, useRef, useState } from "react";
-import axios from "axios";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import Prism from "prismjs";
 import "prismjs/themes/prism-tomorrow.css";
 
@@ -16,11 +16,10 @@ import {
   ArrowUp,
 } from "lucide-react";
 
+import API from "../services/api";
+
 // ==========================================
-// Logo Mark — a minimal robot glyph (antenna,
-// rounded head, two eyes) standing in for the
-// AI assistant, drawn in the same thin-stroke
-// accent style as the rest of the chat surface.
+// Logo Mark
 // ==========================================
 function LogoMark({ className }) {
   return (
@@ -30,7 +29,7 @@ function LogoMark({ className }) {
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
-      {/* antenna */}
+      {/* Antenna */}
       <path
         d="M12 3v2.2"
         stroke="#e8a33d"
@@ -38,9 +37,10 @@ function LogoMark({ className }) {
         strokeWidth="1.6"
         strokeLinecap="round"
       />
+
       <circle cx="12" cy="2.3" r="1" fill="#e8a33d" />
 
-      {/* head */}
+      {/* Head */}
       <rect
         x="5"
         y="6.7"
@@ -52,7 +52,7 @@ function LogoMark({ className }) {
         strokeWidth="1.6"
       />
 
-      {/* ears */}
+      {/* Ears */}
       <path
         d="M5 10.7H3.4"
         stroke="#e8a33d"
@@ -60,6 +60,7 @@ function LogoMark({ className }) {
         strokeWidth="1.6"
         strokeLinecap="round"
       />
+
       <path
         d="M19 10.7h1.6"
         stroke="#e8a33d"
@@ -68,11 +69,11 @@ function LogoMark({ className }) {
         strokeLinecap="round"
       />
 
-      {/* eyes */}
+      {/* Eyes */}
       <circle cx="9.4" cy="12.2" r="1.3" fill="#e8a33d" />
       <circle cx="14.6" cy="12.2" r="1.3" fill="#e8a33d" />
 
-      {/* mouth */}
+      {/* Mouth */}
       <path
         d="M9.6 15.3h4.8"
         stroke="#e8a33d"
@@ -84,8 +85,9 @@ function LogoMark({ className }) {
   );
 }
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
-
+// ==========================================
+// Suggested Questions
+// ==========================================
 const SUGGESTED_QUESTIONS = [
   "Give me a repository overview.",
   "What technologies are used in this project?",
@@ -106,10 +108,12 @@ function CodeBlock({ language, code }) {
   const handleCopy = async () => {
     try {
       await navigator.clipboard.writeText(code);
+
       setCopied(true);
+
       setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Handle copy failure silently
+    } catch (err) {
+      console.error("Failed to copy code:", err);
     }
   };
 
@@ -119,7 +123,9 @@ function CodeBlock({ language, code }) {
         <span className="text-[11px] font-mono text-[#7c8496]">
           {language || "code"}
         </span>
+
         <button
+          type="button"
           onClick={handleCopy}
           className="flex items-center gap-1.5 text-[11px] font-mono text-[#7c8496] hover:text-[#e6eaf0] transition-colors px-1.5 py-0.5 rounded"
         >
@@ -136,9 +142,12 @@ function CodeBlock({ language, code }) {
           )}
         </button>
       </div>
+
       <div className="p-3.5 overflow-x-auto text-[13px] font-mono leading-relaxed">
         <pre className="!m-0 !p-0 !bg-transparent">
-          <code className={`language-${language || "javascript"}`}>{code}</code>
+          <code className={`language-${language || "javascript"}`}>
+            {code}
+          </code>
         </pre>
       </div>
     </div>
@@ -169,10 +178,11 @@ function TypingIndicator() {
 }
 
 // ==========================================
-// Role Badge (monogram, no avatar art)
+// Role Badge
 // ==========================================
 function RoleBadge({ role, isError }) {
   const isUser = role === "user";
+
   return (
     <div
       className={`h-7 w-7 shrink-0 rounded-md flex items-center justify-center font-mono text-[10px] font-semibold border ${
@@ -200,8 +210,10 @@ function RepositoryChatbot({ repositoryId: repositoryIdProp }) {
   const scrollRef = useRef(null);
   const textareaRef = useRef(null);
 
-  const repositoryId = repositoryIdProp || localStorage.getItem("repositoryId");
+  const repositoryId =
+    repositoryIdProp || localStorage.getItem("repositoryId");
 
+  // Scroll to the latest message
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTo({
@@ -211,6 +223,9 @@ function RepositoryChatbot({ repositoryId: repositoryIdProp }) {
     }
   }, [messages, loading]);
 
+  // ==========================================
+  // Send Question to Backend
+  // ==========================================
   async function sendQuestion(text) {
     const userQuestion = text.trim();
 
@@ -221,29 +236,31 @@ function RepositoryChatbot({ repositoryId: repositoryIdProp }) {
       return;
     }
 
-    setMessages((prev) => [...prev, { role: "user", content: userQuestion }]);
+    setMessages((prev) => [
+      ...prev,
+      {
+        role: "user",
+        content: userQuestion,
+      },
+    ]);
+
     setQuestion("");
     setError("");
     setLoading(true);
 
     try {
-      const token = localStorage.getItem("token");
-
-      const response = await axios.post(
-        `${API_URL}/assistant/ask`,
-        { question: userQuestion, repositoryId },
-        {
-          headers: {
-            Authorization: token ? `Bearer ${token}` : "",
-          },
-        }
-      );
+      // Shared API instance handles the base URL and JWT token.
+      const response = await API.post("/assistant/ask", {
+        question: userQuestion,
+        repositoryId,
+      });
 
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: response.data.answer || "I couldn't generate an answer.",
+          content:
+            response.data.answer || "I couldn't generate an answer.",
         },
       ]);
     } catch (err) {
@@ -275,6 +292,9 @@ function RepositoryChatbot({ repositoryId: repositoryIdProp }) {
     }
   }
 
+  // ==========================================
+  // Keyboard Handling
+  // ==========================================
   function handleKeyDown(e) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -282,18 +302,29 @@ function RepositoryChatbot({ repositoryId: repositoryIdProp }) {
     }
   }
 
+  // ==========================================
+  // Textarea Auto Resize
+  // ==========================================
   function handleTextareaChange(e) {
     setQuestion(e.target.value);
+
     const el = e.target;
+
     el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }
 
+  // ==========================================
+  // Clear Chat
+  // ==========================================
   function clearChat() {
     setMessages([]);
     setError("");
   }
 
+  // ==========================================
+  // UI
+  // ==========================================
   return (
     <div className="bg-[#0d1117] rounded-2xl p-6 border border-[#232a37] mt-6 font-sans">
       {/* Header */}
@@ -302,10 +333,12 @@ function RepositoryChatbot({ repositoryId: repositoryIdProp }) {
           <div className="h-9 w-9 rounded-lg bg-[#241c0f] border border-[#4a3a1c] flex items-center justify-center">
             <LogoMark className="h-5 w-5" />
           </div>
+
           <div>
             <h2 className="font-mono text-[13.5px] font-medium text-[#e6eaf0] tracking-tight">
               Repository Assistant
             </h2>
+
             <p className="text-xs text-[#7c8496] mt-0.5">
               Answers grounded in this codebase's structure and files
             </p>
@@ -314,6 +347,7 @@ function RepositoryChatbot({ repositoryId: repositoryIdProp }) {
 
         {messages.length > 0 && (
           <button
+            type="button"
             onClick={clearChat}
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-mono text-[#7c8496] hover:text-[#f47067] hover:bg-[#2a1614] transition-colors"
             title="Clear conversation"
@@ -324,13 +358,17 @@ function RepositoryChatbot({ repositoryId: repositoryIdProp }) {
         )}
       </div>
 
-      {/* Main Content Area */}
+      {/* Main Content */}
       {!repositoryId ? (
         <div className="bg-[#0b0e14] border border-dashed border-[#313a4a] rounded-xl p-8 flex flex-col items-center text-center">
           <div className="h-11 w-11 rounded-lg bg-[#151b23] border border-[#232a37] flex items-center justify-center text-[#7c8496] mb-3">
             <FolderGit2 className="h-5 w-5" />
           </div>
-          <p className="text-sm font-medium text-[#e6eaf0]">No repository connected</p>
+
+          <p className="text-sm font-medium text-[#e6eaf0]">
+            No repository connected
+          </p>
+
           <p className="text-xs text-[#7c8496] mt-1 max-w-xs">
             Analyze a repository to start an interactive Q&A session.
           </p>
@@ -345,18 +383,21 @@ function RepositoryChatbot({ repositoryId: repositoryIdProp }) {
             {messages.length === 0 && (
               <div className="relative bg-[#0b0e14] border border-[#232a37] rounded-xl p-5 pl-6 overflow-hidden">
                 <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#e8a33d]" />
+
                 <p className="text-sm font-medium text-[#e6eaf0]">
                   How can I help with this project?
                 </p>
+
                 <p className="text-xs text-[#7c8496] mt-1 leading-relaxed">
-                  I've read through this repository's structure, dependencies, and code
-                  patterns — ask me anything about it.
+                  I've read through this repository's structure,
+                  dependencies, and code patterns — ask me anything about it.
                 </p>
 
                 <div className="flex flex-wrap gap-2 mt-4">
                   {SUGGESTED_QUESTIONS.map((item) => (
                     <button
                       key={item}
+                      type="button"
                       onClick={() => sendQuestion(item)}
                       disabled={loading}
                       className="text-xs font-medium px-3 py-2 rounded-lg bg-[#151b23] border border-[#232a37] text-[#c3cad6] hover:border-[#e8a33d]/50 hover:text-[#e8a33d] disabled:opacity-50 transition-colors"
@@ -372,11 +413,16 @@ function RepositoryChatbot({ repositoryId: repositoryIdProp }) {
               <div
                 key={index}
                 className={`flex gap-2.5 ${
-                  message.role === "user" ? "justify-end" : "justify-start"
+                  message.role === "user"
+                    ? "justify-end"
+                    : "justify-start"
                 }`}
               >
                 {message.role === "assistant" && (
-                  <RoleBadge role="assistant" isError={message.isError} />
+                  <RoleBadge
+                    role="assistant"
+                    isError={message.isError}
+                  />
                 )}
 
                 <div
@@ -392,8 +438,15 @@ function RepositoryChatbot({ repositoryId: repositoryIdProp }) {
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm]}
                       components={{
-                        code({ node, inline, className, children, ...props }) {
-                          const match = /language-(\w+)/.exec(className || "");
+                        code({
+                          inline,
+                          className,
+                          children,
+                          ...props
+                        }) {
+                          const match =
+                            /language-(\w+)/.exec(className || "");
+
                           return !inline && match ? (
                             <CodeBlock
                               language={match[1]}
@@ -408,26 +461,54 @@ function RepositoryChatbot({ repositoryId: repositoryIdProp }) {
                             </code>
                           );
                         },
-                        p: ({ children }) => <p className="mb-2 last:mb-0">{children}</p>,
+
+                        p: ({ children }) => (
+                          <p className="mb-2 last:mb-0">{children}</p>
+                        ),
+
                         ul: ({ children }) => (
-                          <ul className="list-disc list-outside pl-4 space-y-1 mb-2">{children}</ul>
+                          <ul className="list-disc list-outside pl-4 space-y-1 mb-2">
+                            {children}
+                          </ul>
                         ),
+
                         ol: ({ children }) => (
-                          <ol className="list-decimal list-outside pl-4 space-y-1 mb-2">{children}</ol>
+                          <ol className="list-decimal list-outside pl-4 space-y-1 mb-2">
+                            {children}
+                          </ol>
                         ),
-                        h1: ({ children }) => <h1 className="font-semibold text-base mt-2 mb-1">{children}</h1>,
-                        h2: ({ children }) => <h2 className="font-semibold text-sm mt-2 mb-1">{children}</h2>,
-                        h3: ({ children }) => <h3 className="font-medium text-sm mt-1 mb-1">{children}</h3>,
+
+                        h1: ({ children }) => (
+                          <h1 className="font-semibold text-base mt-2 mb-1">
+                            {children}
+                          </h1>
+                        ),
+
+                        h2: ({ children }) => (
+                          <h2 className="font-semibold text-sm mt-2 mb-1">
+                            {children}
+                          </h2>
+                        ),
+
+                        h3: ({ children }) => (
+                          <h3 className="font-medium text-sm mt-1 mb-1">
+                            {children}
+                          </h3>
+                        ),
                       }}
                     >
                       {message.content}
                     </ReactMarkdown>
                   ) : (
-                    <span className="whitespace-pre-wrap">{message.content}</span>
+                    <span className="whitespace-pre-wrap">
+                      {message.content}
+                    </span>
                   )}
                 </div>
 
-                {message.role === "user" && <RoleBadge role="user" />}
+                {message.role === "user" && (
+                  <RoleBadge role="user" />
+                )}
               </div>
             ))}
 
@@ -439,14 +520,18 @@ function RepositoryChatbot({ repositoryId: repositoryIdProp }) {
             )}
           </div>
 
+          {/* Error Message */}
           {error && (
             <div className="relative bg-[#1a1210] border border-[#4a2a26] rounded-lg pl-4 pr-3 py-2 mb-3 overflow-hidden">
               <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-[#f47067]" />
-              <p className="text-xs font-medium text-[#f47067]">{error}</p>
+
+              <p className="text-xs font-medium text-[#f47067]">
+                {error}
+              </p>
             </div>
           )}
 
-          {/* Text Input Container */}
+          {/* Text Input */}
           <div className="relative flex items-end rounded-xl bg-[#0b0e14] border border-[#232a37] focus-within:border-[#e8a33d]/60 transition-colors">
             <textarea
               ref={textareaRef}
@@ -459,6 +544,7 @@ function RepositoryChatbot({ repositoryId: repositoryIdProp }) {
             />
 
             <button
+              type="button"
               onClick={() => sendQuestion(question)}
               disabled={!question.trim() || loading}
               className="absolute right-2 bottom-2 h-8 w-8 rounded-lg bg-[#e8a33d] text-[#0d1117] flex items-center justify-center hover:bg-[#f0b25a] disabled:opacity-30 disabled:hover:bg-[#e8a33d] transition-colors"

@@ -1,7 +1,9 @@
+
 import { useEffect, useState, useMemo } from "react";
 import axios from "axios";
+import API from "../services/api";
+
 import {
-  FileCode,
   Copy,
   Check,
   ChevronDown,
@@ -30,17 +32,30 @@ function parseDiff(raw) {
   lines.forEach((line) => {
     if (line.startsWith("diff --git")) {
       const pathMatch = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
+
       const path = pathMatch
         ? pathMatch[2] || pathMatch[1]
         : line.replace("diff --git a/", "").split(" b/")[0];
 
-      current = { path, lines: [], additions: 0, deletions: 0 };
+      current = {
+        path,
+        lines: [],
+        additions: 0,
+        deletions: 0,
+      };
+
       files.push(current);
       return;
     }
 
     if (!current) {
-      current = { path: "changes", lines: [], additions: 0, deletions: 0 };
+      current = {
+        path: "changes",
+        lines: [],
+        additions: 0,
+        deletions: 0,
+      };
+
       files.push(current);
     }
 
@@ -48,10 +63,12 @@ function parseDiff(raw) {
       line.startsWith("+++") ||
       line.startsWith("---") ||
       line.startsWith("index ")
-    )
+    ) {
       return;
+    }
 
     let type = "context";
+
     if (line.startsWith("@@")) {
       type = "hunk";
     } else if (line.startsWith("+")) {
@@ -77,7 +94,7 @@ const lineStyles = {
 
 function CommitDiff({ hash }) {
   const [files, setFiles] = useState([]);
-  const [status, setStatus] = useState("idle"); // idle | loading | error | done
+  const [status, setStatus] = useState("idle");
   const [openFiles, setOpenFiles] = useState({});
   const [copiedPath, setCopiedPath] = useState(null);
 
@@ -88,30 +105,46 @@ function CommitDiff({ hash }) {
 
     async function fetchDiff() {
       setStatus("loading");
+
       try {
-        const res = await axios.get(
-          `http://localhost:5000/repository/commit/${hash}/diff`,
+        const res = await API.get(
+          `/repository/commit/${encodeURIComponent(hash)}/diff`,
           { signal: controller.signal }
         );
+
         const parsed = parseDiff(res.data.data);
+
         setFiles(parsed);
+
         setOpenFiles(
-          Object.fromEntries(parsed.map((_, i) => [i, true])) // Default open all files
+          Object.fromEntries(parsed.map((_, i) => [i, true]))
         );
+
         setStatus("done");
       } catch (err) {
-        if (axios.isCancel(err)) return;
-        console.error(err);
+        if (
+          axios.isCancel(err) ||
+          err.code === "ERR_CANCELED" ||
+          controller.signal.aborted
+        ) {
+          return;
+        }
+
+        console.error("Failed to load commit diff:", err);
         setStatus("error");
       }
     }
 
     fetchDiff();
+
     return () => controller.abort();
   }, [hash]);
 
   const toggleFile = (i) => {
-    setOpenFiles((prev) => ({ ...prev, [i]: !prev[i] }));
+    setOpenFiles((prev) => ({
+      ...prev,
+      [i]: !prev[i],
+    }));
   };
 
   const toggleAllFiles = (expand) => {
@@ -125,26 +158,30 @@ function CommitDiff({ hash }) {
   }, [files, openFiles]);
 
   async function copyFile(path, i) {
-    const text = files[i].lines.map((l) => l.text).join("\n");
+    const text = files[i].lines.map((line) => line.text).join("\n");
+
     try {
       await navigator.clipboard.writeText(text);
+
       setCopiedPath(path);
+
       setTimeout(() => setCopiedPath(null), 1500);
     } catch (err) {
-      console.error(err);
+      console.error("Failed to copy diff:", err);
     }
   }
 
   return (
     <div className="space-y-4 font-sans text-slate-100">
-      
       {/* Top Header Controls */}
       <div className="flex items-center justify-between pb-2 border-b border-slate-800/80">
         <div className="flex items-center gap-2">
           <Zap size={18} className="text-indigo-400" />
+
           <h2 className="font-bold text-sm text-white tracking-wide">
             Unified Diff Viewer
           </h2>
+
           {status === "done" && (
             <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700/60">
               {files.length} {files.length === 1 ? "file" : "files"}
@@ -170,11 +207,17 @@ function CommitDiff({ hash }) {
         )}
       </div>
 
-      {/* Loading Skeleton State */}
+      {/* Loading State */}
       {status === "loading" && (
         <div className="flex flex-col items-center justify-center gap-3 py-12 bg-slate-900/40 border border-slate-800/80 rounded-2xl backdrop-blur-xl">
-          <Loader2 className="animate-spin text-indigo-400" size={22} />
-          <p className="text-xs font-mono text-slate-400">Loading commit diffs...</p>
+          <Loader2
+            className="animate-spin text-indigo-400"
+            size={22}
+          />
+
+          <p className="text-xs font-mono text-slate-400">
+            Loading commit diffs...
+          </p>
         </div>
       )}
 
@@ -182,7 +225,10 @@ function CommitDiff({ hash }) {
       {status === "error" && (
         <div className="flex items-center gap-3 text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 rounded-2xl px-4 py-3">
           <AlertCircle size={16} className="shrink-0" />
-          <span>Could not load the code diff for this commit. Please try again.</span>
+
+          <span>
+            Could not load the code diff for this commit. Please try again.
+          </span>
         </div>
       )}
 
@@ -200,13 +246,17 @@ function CommitDiff({ hash }) {
             key={file.path + i}
             className="rounded-2xl border border-slate-800/80 bg-slate-950 overflow-hidden shadow-xl"
           >
-            {/* File Bar Header */}
+            {/* File Header */}
             <div
               onClick={() => toggleFile(i)}
               className="w-full flex items-center justify-between bg-slate-900/90 hover:bg-slate-900 px-4 py-2.5 border-b border-slate-800/80 cursor-pointer select-none transition-colors"
             >
               <div className="flex items-center gap-2.5 min-w-0 pr-2">
-                <Code2 size={15} className="text-indigo-400 shrink-0" />
+                <Code2
+                  size={15}
+                  className="text-indigo-400 shrink-0"
+                />
+
                 <span className="text-xs font-mono font-medium text-slate-200 truncate">
                   {file.path}
                 </span>
@@ -221,6 +271,7 @@ function CommitDiff({ hash }) {
                       {file.additions}
                     </span>
                   )}
+
                   {file.deletions > 0 && (
                     <span className="flex items-center text-rose-400 bg-rose-500/10 px-1.5 py-0.5 rounded border border-rose-500/20">
                       <Minus size={10} />
@@ -229,7 +280,7 @@ function CommitDiff({ hash }) {
                   )}
                 </div>
 
-                {/* Copy Code Action Button */}
+                {/* Copy Code Button */}
                 <button
                   type="button"
                   onClick={(e) => {
@@ -239,11 +290,17 @@ function CommitDiff({ hash }) {
                   className="flex items-center gap-1 text-[11px] font-mono text-slate-400 hover:text-white border border-slate-700/60 hover:border-slate-600 rounded-lg px-2 py-1 bg-slate-800/60 hover:bg-slate-800 transition-all cursor-pointer"
                 >
                   {copiedPath === file.path ? (
-                    <Check size={12} className="text-emerald-400" />
+                    <Check
+                      size={12}
+                      className="text-emerald-400"
+                    />
                   ) : (
                     <Copy size={12} />
                   )}
-                  <span>{copiedPath === file.path ? "Copied" : "Copy"}</span>
+
+                  <span>
+                    {copiedPath === file.path ? "Copied" : "Copy"}
+                  </span>
                 </button>
 
                 {/* Expand / Collapse Icon */}
@@ -260,13 +317,13 @@ function CommitDiff({ hash }) {
             {/* Expandable Code Content */}
             {openFiles[i] && (
               <pre className="font-mono text-xs leading-6 bg-slate-950 p-2 m-0 overflow-x-auto custom-scrollbar">
-                {file.lines.map((l, idx) => (
+                {file.lines.map((line, idx) => (
                   <div
                     key={idx}
-                    className={`px-3 transition-colors rounded-sm flex ${lineStyles[l.type]}`}
+                    className={`px-3 transition-colors rounded-sm flex ${lineStyles[line.type]}`}
                   >
                     <span className="whitespace-pre flex-1">
-                      {l.text.length > 0 ? l.text : "\u00A0"}
+                      {line.text.length > 0 ? line.text : "\u00A0"}
                     </span>
                   </div>
                 ))}
