@@ -13,6 +13,7 @@ import {
   Loader2,
 } from "lucide-react";
 import API from "../services/api";
+import ConstellationField from "../components/ui/constellation-field";
 
 function PasswordInput({
   label,
@@ -332,7 +333,19 @@ function Settings() {
   };
 
   return (
-    <div className="min-h-full bg-slate-50 text-slate-900 p-4 sm:p-6 lg:p-8 transition-colors duration-300 dark:bg-slate-950 dark:text-slate-100">
+    <div className="relative min-h-full text-slate-900 p-4 sm:p-6 lg:p-8 transition-colors duration-300 dark:text-slate-100">
+
+      {/* Animated constellation background — theme-aware, since this is
+          the one page in the app that supports both light and dark mode.
+          Fixed positioning means it fills the viewport on any device. */}
+      <ConstellationField
+        mode="auto"
+        density={0.9}
+        speed={0.8}
+        className="fixed inset-0 z-0 h-full w-full pointer-events-none"
+      />
+
+      <div className="relative z-10">
 
       {/* ==================================================
           Header
@@ -826,6 +839,8 @@ function Settings() {
       >
         <Check className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />
         Settings saved successfully
+      </div>
+
       </div>
     </div>
   );

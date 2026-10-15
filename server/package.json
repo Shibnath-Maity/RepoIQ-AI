@@ -13,10 +13,11 @@
   "type": "commonjs",
   "dependencies": {
     "@google/genai": "^2.17.0",
+    "@google/generative-ai": "^0.24.1",
     "axios": "^1.18.1",
     "bcryptjs": "^3.0.3",
     "chromadb": "^3.5.0",
-    "cohere-ai": "^8.0.0",
+    "cohere-ai": "^8.1.0",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",

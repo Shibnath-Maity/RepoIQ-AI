@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useAnalysis } from "../context/AnalysisContext";
 
 import TopContributors from "../components/TopContributors";
@@ -19,6 +19,7 @@ import {
   UserCircle2,
   Info,
   ChevronRight,
+  CalendarClock,
 } from "lucide-react";
 
 function normalizeContributorName(value) {
@@ -30,11 +31,27 @@ function normalizeContributorName(value) {
     .toLowerCase();
 }
 
+function formatDate(date) {
+  if (!date) return null;
+  const d = new Date(date);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
 function Contributors() {
   const { analysis } = useAnalysis();
 
   const [activeContributor, setActiveContributor] = useState(null);
   const [rangeDays, setRangeDays] = useState(90);
+
+  // Tracks whether the user has deliberately picked a range themselves.
+  // Once true, the auto-widen effect below backs off and leaves their
+  // choice alone.
+  const userChangedRangeRef = useRef(false);
 
   const showRecentCommits = false;
 
@@ -51,6 +68,7 @@ function Contributors() {
   // Reset filter on repository change
   useEffect(() => {
     setRangeDays(90);
+    userChangedRangeRef.current = false;
   }, [analysis]);
 
   const cutoff = useMemo(() => {
@@ -67,6 +85,42 @@ function Contributors() {
       (c) => c.date && new Date(c.date).getTime() >= cutoff
     );
   }, [allCommits, cutoff]);
+
+  // Most recent commit across the whole repo (independent of the active
+  // range filter) — used to explain an empty range to the user instead of
+  // just showing a wall of zeros.
+  const mostRecentCommitDate = useMemo(() => {
+    let latest = null;
+    for (const c of allCommits) {
+      if (!c?.date) continue;
+      const t = new Date(c.date).getTime();
+      if (Number.isNaN(t)) continue;
+      if (!latest || t > new Date(latest).getTime()) latest = c.date;
+    }
+    return latest;
+  }, [allCommits]);
+
+  // True when the repo has commit history, but none of it falls inside the
+  // currently selected range (e.g. an inactive repo + "Last 30 days").
+  const isRangeEmpty = allCommits.length > 0 && statsCommits.length === 0;
+
+  // If the default 90-day window has no commits but the repo does have
+  // commit history (e.g. an inactive/older repo), auto-widen to "All time"
+  // instead of silently showing an empty dashboard. Only runs until the
+  // user deliberately picks a range themselves.
+  useEffect(() => {
+    if (userChangedRangeRef.current) return;
+    if (!rangeDays) return; // already "All time"
+    if (isRangeEmpty) {
+      userChangedRangeRef.current = true;
+      setRangeDays(null);
+    }
+  }, [isRangeEmpty, rangeDays]);
+
+  const handleRangeChange = (value) => {
+    userChangedRangeRef.current = true;
+    setRangeDays(value);
+  };
 
   const contributorList = useMemo(() => {
     const map = new Map();
@@ -358,7 +412,7 @@ function Contributors() {
             <div className="w-full sm:w-auto shrink-0">
               <TimeRangeFilter
                 value={rangeDays}
-                onChange={setRangeDays}
+                onChange={handleRangeChange}
               />
             </div>
           )}
@@ -380,6 +434,37 @@ function Contributors() {
           </div>
         ) : (
           <>
+            {/* Empty-range banner — the repo has history, just none inside
+                the currently selected time window. Explains the zeros
+                below instead of leaving them unexplained. */}
+            {isRangeEmpty && (
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-[10px] border border-amber-400/20 bg-amber-400/[0.05] px-4 py-3">
+                <div className="flex items-start gap-2.5">
+                  <CalendarClock size={16} strokeWidth={1.75} className="text-amber-400 shrink-0 mt-0.5" />
+                  <p className="text-[12.5px] text-[#C7CCD6] leading-snug">
+                    No commits in this time range.
+                    {mostRecentCommitDate && (
+                      <>
+                        {" "}
+                        This repository's most recent activity was on{" "}
+                        <span className="font-medium text-white">
+                          {formatDate(mostRecentCommitDate)}
+                        </span>
+                        .
+                      </>
+                    )}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleRangeChange(null)}
+                  className="self-start sm:self-auto shrink-0 text-[12px] font-medium text-amber-400 hover:text-amber-300 border border-amber-400/30 hover:border-amber-400/50 rounded-[8px] px-3 py-1.5 transition-colors duration-150"
+                >
+                  Switch to All time
+                </button>
+              </div>
+            )}
+
             {/* Stats Overview */}
             <section>
               <ContributorStats
@@ -494,7 +579,9 @@ function Contributors() {
             ) : (
               <div className="py-16 text-center bg-[#10151C]/60 backdrop-blur-sm rounded-[14px] border border-dashed border-white/[0.08]">
                 <p className="text-sm text-[#7C8698]">
-                  Select a contributor above to load their developer profile.
+                  {isRangeEmpty
+                    ? "No contributor to show \u2014 there are no commits in this time range."
+                    : "Select a contributor above to load their developer profile."}
                 </p>
               </div>
             )}

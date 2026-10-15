@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import {
   Mail,
@@ -45,6 +45,7 @@ const FIELDS = [
     placeholder: "name@company.com",
     autoComplete: "email",
     icon: Mail,
+    inputMode: "email",
   },
   {
     name: "password",
@@ -64,6 +65,75 @@ const FEATURE_POINTS = [
 ];
 
 /* -------------------------------------------------------------------------- */
+/* Validation + error mapping (pure helpers)                                  */
+/* -------------------------------------------------------------------------- */
+
+// Practical format check: something@something.tld, no spaces, no provider
+// restrictions. Deliberately not RFC-exhaustive; the server remains the
+// source of truth for whether an address is actually registered.
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+function validateEmail(rawEmail) {
+  const email = rawEmail.trim();
+  if (!email) return "Please enter your email address.";
+  if (email.length > 254 || !EMAIL_PATTERN.test(email)) {
+    return "Please enter a valid email address.";
+  }
+  return "";
+}
+
+function validatePassword(password) {
+  // Password is never trimmed or modified. Only emptiness is checked so that
+  // existing users with any stored password can still sign in.
+  if (!password) return "Please enter your password.";
+  return "";
+}
+
+const MESSAGES = {
+  invalidCredentials:
+    "Invalid email or password. Please check your credentials and try again.",
+  network:
+    "Unable to connect to the server. Please check your connection and try again.",
+  server: "Something went wrong. Please try again in a moment.",
+  rateLimited: "Too many sign-in attempts. Please wait a moment and try again.",
+  generic: "We couldn't sign you in. Please check your details and try again.",
+  noToken: "We couldn't complete your sign-in. Please try again in a moment.",
+  storage:
+    "Your browser blocked saving the session. Please check your browser's storage settings and try again.",
+};
+
+// Maps any failure to a fixed, user-safe string. Raw backend messages, stack
+// traces, and exception text are never shown.
+function getLoginErrorMessage(err) {
+  const response = err?.response;
+
+  if (!response) {
+    // No HTTP response at all: offline, DNS failure, CORS, timeout, etc.
+    return MESSAGES.network;
+  }
+
+  const status = response.status;
+
+  if (status === 401 || status === 403) return MESSAGES.invalidCredentials;
+
+  if (status === 429) {
+    const retryAfter = Number.parseInt(response.headers?.["retry-after"], 10);
+    if (Number.isFinite(retryAfter) && retryAfter > 0) {
+      const wait =
+        retryAfter >= 60
+          ? `${Math.ceil(retryAfter / 60)} minute${retryAfter > 60 ? "s" : ""}`
+          : `${retryAfter} second${retryAfter === 1 ? "" : "s"}`;
+      return `Too many sign-in attempts. Please wait ${wait} and try again.`;
+    }
+    return MESSAGES.rateLimited;
+  }
+
+  if (status >= 500) return MESSAGES.server;
+
+  return MESSAGES.generic;
+}
+
+/* -------------------------------------------------------------------------- */
 /* Small presentational pieces                                                */
 /* -------------------------------------------------------------------------- */
 
@@ -81,7 +151,7 @@ function Logo({ className = "" }) {
           src={logo}
           alt=""
           onError={() => setImgFailed(true)}
-          className="h-8 w-8 shrink-0 object-contain transition-transform duration-200 hover:scale-105"
+          className="h-8 w-8 shrink-0 object-contain transition-transform duration-200 hover:scale-105 motion-reduce:transition-none motion-reduce:hover:scale-100"
         />
       )}
       <span className="text-[15px] font-semibold tracking-tight text-white">
@@ -94,7 +164,7 @@ function Logo({ className = "" }) {
 function SiteHeader() {
   return (
     <header className="w-full border-b border-slate-800/60">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 py-3 sm:px-6 sm:py-4 lg:px-8">
         <Logo />
         <div className="flex items-center gap-2 text-xs sm:text-sm">
           <span className="hidden text-slate-500 sm:inline">
@@ -102,7 +172,7 @@ function SiteHeader() {
           </span>
           <Link
             to="/register"
-            className="rounded-lg px-3 py-1.5 font-medium text-slate-200 transition-colors hover:bg-slate-900 hover:text-white"
+            className="inline-flex min-h-[44px] items-center rounded-lg px-3 font-medium text-slate-200 transition-colors hover:bg-slate-900 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50 motion-reduce:transition-none"
           >
             Create account
           </Link>
@@ -135,10 +205,20 @@ function HeroVisual() {
   );
 }
 
-function FormField({ field, value, onChange, disabled, showValue, onToggleShow }) {
-  const { name, type, label, placeholder, autoComplete, icon: Icon, hasToggle } = field;
+function FormField({
+  field,
+  value,
+  onChange,
+  disabled,
+  showValue,
+  onToggleShow,
+  error,
+  inputRef,
+}) {
+  const { name, type, label, placeholder, autoComplete, icon: Icon, hasToggle, inputMode } = field;
 
   const inputType = hasToggle ? (showValue ? "text" : "password") : type;
+  const errorId = `${name}-error`;
 
   return (
     <div className="space-y-1.5">
@@ -148,6 +228,7 @@ function FormField({ field, value, onChange, disabled, showValue, onToggleShow }
       <div className="relative flex items-center">
         <Icon size={16} className="pointer-events-none absolute left-3.5 text-slate-500" />
         <input
+          ref={inputRef}
           id={name}
           type={inputType}
           name={name}
@@ -155,22 +236,40 @@ function FormField({ field, value, onChange, disabled, showValue, onToggleShow }
           value={value}
           onChange={onChange}
           autoComplete={autoComplete}
-          disabled={disabled}
-          required
-          className="h-[50px] w-full rounded-lg border border-slate-800 bg-slate-950/70 pl-10 pr-10 text-sm text-slate-100 outline-none transition-colors duration-150 placeholder:text-slate-600 focus:border-sky-500/70 focus:ring-2 focus:ring-sky-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+          inputMode={inputMode}
+          autoCapitalize={name === "email" ? "none" : undefined}
+          spellCheck={name === "email" ? false : undefined}
+          // readOnly (not disabled) while submitting so focus isn't dropped
+          readOnly={disabled}
+          aria-required="true"
+          aria-invalid={error ? "true" : "false"}
+          aria-describedby={error ? errorId : undefined}
+          className={`h-12 w-full min-w-0 rounded-lg border bg-slate-950/70 pl-10 ${
+            hasToggle ? "pr-12" : "pr-3.5"
+          } text-base text-slate-100 outline-none transition-colors duration-150 placeholder:text-slate-600 focus:ring-2 read-only:cursor-not-allowed read-only:opacity-60 motion-reduce:transition-none sm:text-sm ${
+            error
+              ? "border-rose-500/60 focus:border-rose-500/70 focus:ring-rose-500/20"
+              : "border-slate-800 focus:border-sky-500/70 focus:ring-sky-500/20"
+          }`}
         />
         {hasToggle && (
           <button
             type="button"
             onClick={onToggleShow}
-            className="absolute right-3.5 rounded-md p-1 text-slate-500 transition-colors hover:text-slate-300 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
-            tabIndex={-1}
+            className="absolute right-1 flex h-11 w-11 items-center justify-center rounded-md text-slate-400 transition-colors hover:text-slate-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500/50 motion-reduce:transition-none"
             aria-label={showValue ? `Hide ${label.toLowerCase()}` : `Show ${label.toLowerCase()}`}
+            aria-pressed={!!showValue}
           >
             {showValue ? <EyeOff size={16} /> : <Eye size={16} />}
           </button>
         )}
       </div>
+      {error && (
+        <p id={errorId} className="flex items-start gap-1.5 text-xs leading-relaxed text-rose-300">
+          <AlertCircle size={13} className="mt-0.5 shrink-0 text-rose-400" aria-hidden="true" />
+          <span>{error}</span>
+        </p>
+      )}
     </div>
   );
 }
@@ -189,89 +288,118 @@ export default function Login() {
 
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  // Server / authentication failures (shown in the alert banner)
   const [error, setError] = useState("");
+  // Per-field validation failures (shown beside each field)
+  const [fieldErrors, setFieldErrors] = useState({ email: "", password: "" });
+
+  const inputRefs = { email: useRef(null), password: useRef(null) };
+  // Synchronous guard: state updates are async, so rapid double-clicks or
+  // Enter presses could otherwise slip a second request through.
+  const submittingRef = useRef(false);
 
   const handleChange = (e) => {
-    setForm((prev) => ({
-      ...prev,
-      [e.target.name]: e.target.value,
-    }));
+    const { name, value } = e.target;
 
-    // Clear previous error when user starts typing again
-    if (error) {
-      setError("");
-    }
+    setForm((prev) => ({ ...prev, [name]: value }));
+
+    // Clear only this field's validation error, plus any stale server error
+    setFieldErrors((prev) => (prev[name] ? { ...prev, [name]: "" } : prev));
+    if (error) setError("");
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+
     setError("");
 
     const email = form.email.trim();
-    const password = form.password;
+    const password = form.password; // intentionally untouched
 
-    if (!email || !password) {
-      setError("Please enter your email and password.");
+    const nextErrors = {
+      email: validateEmail(form.email),
+      password: validatePassword(password),
+    };
+    setFieldErrors(nextErrors);
+
+    if (nextErrors.email || nextErrors.password) {
+      const firstInvalid = nextErrors.email ? "email" : "password";
+      inputRefs[firstInvalid].current?.focus();
       return;
     }
 
-    try {
-      setLoading(true);
+    submittingRef.current = true;
+    setLoading(true);
 
+    try {
       const response = await API.post("/auth/login", {
         email,
         password,
       });
 
-      const token = response.data?.token;
-      const user = response.data?.user;
+      const token = response?.data?.token;
+      const user = response?.data?.user;
 
-      if (!token) {
-        throw new Error("Login succeeded but no authentication token was received.");
+      if (!token || typeof token !== "string") {
+        setError(MESSAGES.noToken);
+        return;
       }
 
-      localStorage.setItem("token", token);
+      try {
+        localStorage.setItem("token", token);
 
-      if (user) {
-        localStorage.setItem("user", JSON.stringify(user));
+        if (user) {
+          localStorage.setItem("user", JSON.stringify(user));
+        } else {
+          // Don't leave a previous account's profile next to a new token
+          localStorage.removeItem("user");
+        }
+      } catch {
+        // e.g. storage disabled / quota exceeded; never leave a half-saved session
+        try {
+          localStorage.removeItem("token");
+          localStorage.removeItem("user");
+        } catch {
+          /* ignore */
+        }
+        setError(MESSAGES.storage);
+        return;
       }
 
       navigate("/dashboard");
     } catch (err) {
-      console.error("Login error:", err);
-
-      setError(
-        err.response?.data?.message ||
-          err.response?.data?.error ||
-          err.message ||
-          "Login failed. Please try again."
-      );
+      // Deliberately no logging of the error object: it can carry the request
+      // body (including the password) in err.config.data.
+      setError(getLoginErrorMessage(err));
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen w-full bg-[#030712] font-sans antialiased">
+    <div className="min-h-screen min-h-[100dvh] w-full overflow-x-hidden bg-[#030712] font-sans antialiased">
       <SiteHeader />
 
-      <main className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-12 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:gap-10 lg:py-24 lg:px-8">
+      <main className="mx-auto grid max-w-6xl grid-cols-1 items-center gap-8 px-4 py-8 sm:gap-12 sm:px-6 sm:py-12 lg:grid-cols-2 lg:gap-10 lg:px-8 lg:py-24">
         {/* ---------------------------------------------------------------- */}
         {/* Hero column                                                     */}
         {/* ---------------------------------------------------------------- */}
-        <section className="order-1 animate-in fade-in slide-in-from-bottom-2 duration-500">
-          <h1 className="text-[34px] font-bold leading-[1.1] tracking-tight text-white sm:text-[42px] lg:text-[48px]">
+        <section className="order-1 animate-in fade-in slide-in-from-bottom-2 duration-500 motion-reduce:animate-none">
+          <h1 className="text-[28px] font-bold leading-[1.15] tracking-tight text-white min-[400px]:text-[32px] sm:text-[42px] sm:leading-[1.1] lg:text-[48px]">
             Welcome back.
             <br />
             Your codebase is <span className="text-sky-400">waiting.</span>
           </h1>
 
-          <p className="mt-5 max-w-md text-[15px] leading-relaxed text-slate-400">
+          {/* Supporting copy is hidden on phones so the form stays above the fold */}
+          <p className="mt-5 hidden max-w-md text-[15px] leading-relaxed text-slate-400 sm:block">
             Continue exploring your repositories, code changes, contributors, and
             AI-powered insights with RepoIQ.
           </p>
 
-          <ul className="mt-6 space-y-2.5">
+          <ul className="mt-6 hidden space-y-2.5 sm:block">
             {FEATURE_POINTS.map(({ icon: Icon, label }) => (
               <li key={label} className="flex items-center gap-2.5 text-sm text-slate-300">
                 <span className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-500/10 text-sky-400">
@@ -291,8 +419,8 @@ export default function Login() {
         {/* Login card                                                      */}
         {/* ---------------------------------------------------------------- */}
         <section className="order-2 flex justify-center lg:justify-end">
-          <div className="w-full max-w-[440px] rounded-[20px] border border-slate-800 bg-slate-900/50 p-6 shadow-2xl shadow-black/40 backdrop-blur-sm sm:p-8">
-            <div className="mb-6">
+          <div className="w-full min-w-0 max-w-[440px] rounded-[20px] border border-slate-800 bg-slate-900/50 p-5 shadow-2xl shadow-black/40 backdrop-blur-sm sm:p-8">
+            <div className="mb-5 sm:mb-6">
               <h2 className="text-xl font-semibold text-white">Sign in to RepoIQ</h2>
               <p className="mt-1.5 text-sm text-slate-400">
                 Access your repository intelligence dashboard.
@@ -302,15 +430,14 @@ export default function Login() {
             {error && (
               <div
                 role="alert"
-                aria-live="polite"
                 className="mb-5 flex items-start gap-2.5 rounded-lg border border-rose-500/20 bg-rose-500/10 p-3 text-xs text-rose-300"
               >
-                <AlertCircle size={15} className="mt-0.5 shrink-0 text-rose-400" />
+                <AlertCircle size={15} className="mt-0.5 shrink-0 text-rose-400" aria-hidden="true" />
                 <span className="leading-relaxed">{error}</span>
               </div>
             )}
 
-            <form onSubmit={handleSubmit} noValidate className="space-y-4">
+            <form onSubmit={handleSubmit} noValidate aria-busy={loading} className="space-y-4">
               {FIELDS.map((field) => {
                 const isPassword = field.name === "password";
 
@@ -323,6 +450,8 @@ export default function Login() {
                     disabled={loading}
                     showValue={isPassword ? showPassword : undefined}
                     onToggleShow={() => setShowPassword((prev) => !prev)}
+                    error={fieldErrors[field.name]}
+                    inputRef={inputRefs[field.name]}
                   />
                 );
               })}
@@ -330,20 +459,20 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={loading}
-                aria-live="polite"
-                className="group mt-2 flex h-[50px] w-full items-center justify-center gap-2 rounded-lg bg-sky-600 text-sm font-medium text-white transition-colors duration-150 hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-70"
+                className="group mt-2 flex h-12 w-full items-center justify-center gap-2 rounded-lg bg-sky-600 text-sm font-medium text-white transition-colors duration-150 hover:bg-sky-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-400/60 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 disabled:cursor-not-allowed disabled:opacity-70 motion-reduce:transition-none"
               >
                 {loading ? (
                   <>
-                    <Loader2 size={17} className="animate-spin" />
-                    <span>Signing in...</span>
+                    <Loader2 size={17} className="animate-spin" aria-hidden="true" />
+                    <span role="status">Signing in...</span>
                   </>
                 ) : (
                   <>
                     <span>Sign in</span>
                     <ArrowRight
                       size={16}
-                      className="transition-transform duration-150 group-hover:translate-x-0.5"
+                      aria-hidden="true"
+                      className="transition-transform duration-150 group-hover:translate-x-0.5 motion-reduce:transition-none motion-reduce:group-hover:translate-x-0"
                     />
                   </>
                 )}
@@ -353,11 +482,14 @@ export default function Login() {
             <div className="mt-6 border-t border-slate-800 pt-5 text-center">
               <p className="text-xs text-slate-400">
                 New to RepoIQ?{" "}
-                <Link to="/register" className="font-medium text-sky-400 hover:text-sky-300">
+                <Link
+                  to="/register"
+                  className="inline-block py-2 font-medium text-sky-400 hover:text-sky-300 focus:outline-none focus-visible:rounded focus-visible:ring-2 focus-visible:ring-sky-500/50"
+                >
                   Create your account
                 </Link>
               </p>
-              <p className="mt-3 text-[11px] text-slate-600">
+              <p className="mt-1 text-[11px] text-slate-600">
                 Repository intelligence for modern developers
               </p>
             </div>

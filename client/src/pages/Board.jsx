@@ -1,21 +1,13 @@
-import { useMemo, useState, useCallback, useRef, useEffect } from "react";
+import { useMemo, useEffect } from "react";
 import {
   GitCommit,
   Users,
   FileCode2,
   Flame,
-  Search,
-  X,
-  Copy,
-  Download,
-  Check,
   Code2,
-  Terminal,
   ArrowUpRight,
-  ChevronRight,
 } from "lucide-react";
 
-import API from "../services/api";
 import FileAnalysis from "../components/FileAnalysis";
 import RepositoryOverview from "../components/RepositoryOverview";
 import StatCard from "../components/StatCard";
@@ -51,33 +43,6 @@ function DashboardBackdrop() {
       brightness={0.7}
       className="fixed inset-0 z-0 h-full w-full pointer-events-none"
     />
-  );
-}
-
-function DiffLine({ line, index }) {
-  let color = "text-slate-400";
-  let bg = "hover:bg-slate-900";
-  let marker = null;
-
-  if (line.startsWith("+") && !line.startsWith("+++")) {
-    color = "text-emerald-400";
-    bg = "bg-emerald-500/[0.07] hover:bg-emerald-500/[0.12]";
-    marker = "+";
-  } else if (line.startsWith("-") && !line.startsWith("---")) {
-    color = "text-rose-400";
-    bg = "bg-rose-500/[0.07] hover:bg-rose-500/[0.12]";
-    marker = "\u2212";
-  } else if (line.startsWith("@@")) {
-    color = "text-indigo-400";
-    bg = "bg-indigo-500/[0.06]";
-  }
-
-  return (
-    <div className={`grid grid-cols-[2.5rem_1rem_1fr] items-start font-mono text-[11px] leading-5 transition-colors ${bg} ${color}`}>
-      <span className="px-2 text-right text-slate-600 select-none tabular-nums">{index + 1}</span>
-      <span className="select-none opacity-70">{marker}</span>
-      <span className="whitespace-pre pr-4">{line || "\u00A0"}</span>
-    </div>
   );
 }
 
@@ -136,76 +101,6 @@ function Section({ children, className = "" }) {
 function Board() {
   const { analysis, loading, repositoryId } = useAnalysis();
 
-  const [selectedCommit, setSelectedCommit] = useState(null);
-  const [commitDiff, setCommitDiff] = useState("");
-  const [loadingCommit, setLoadingCommit] = useState(false);
-  const [loadingDiff, setLoadingDiff] = useState(false);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [commitError, setCommitError] = useState("");
-  const [copiedDiff, setCopiedDiff] = useState(false);
-
-  const activeRequestRef = useRef(null);
-
-  const copyDiff = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(commitDiff);
-      setCopiedDiff(true);
-      setTimeout(() => setCopiedDiff(false), 1500);
-    } catch (error) {
-      console.error("Clipboard Error:", error);
-    }
-  }, [commitDiff]);
-
-  const downloadDiff = useCallback(() => {
-    const blob = new Blob([commitDiff], { type: "text/plain" });
-    const url = window.URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `commit-${selectedCommit?.hash || "patch"}.patch`;
-    a.click();
-
-    window.URL.revokeObjectURL(url);
-  }, [commitDiff, selectedCommit]);
-
-  const handleSelectCommit = useCallback(
-    async (hash) => {
-      if (!hash) return;
-
-      activeRequestRef.current = hash;
-
-      setLoadingCommit(true);
-      setLoadingDiff(true);
-      setCommitError("");
-      setSelectedCommit(null);
-      setCommitDiff("");
-
-      const [detailsResult, diffResult] = await Promise.allSettled([
-        API.get(`/repository/commit/${hash}?repositoryId=${repositoryId}`),
-        API.get(`/repository/commit/${hash}/diff?repositoryId=${repositoryId}`),
-      ]);
-
-      if (activeRequestRef.current !== hash) return;
-
-      if (detailsResult.status === "fulfilled") {
-        setSelectedCommit(detailsResult.value.data.data);
-      } else {
-        console.error("Commit Fetch Error:", detailsResult.reason);
-        setCommitError("Failed to load commit details.");
-      }
-
-      if (diffResult.status === "fulfilled") {
-        setCommitDiff(diffResult.value.data.data);
-      } else {
-        console.error("Diff Fetch Error:", diffResult.reason);
-      }
-
-      setLoadingCommit(false);
-      setLoadingDiff(false);
-    },
-    [repositoryId]
-  );
-
   // Destructure architecture from analysis context
   const {
     stats = {},
@@ -239,19 +134,6 @@ function Board() {
     }
   }, [architecture]);
 
-  const displayedCommits = useMemo(() => {
-    const search = searchTerm.trim().toLowerCase();
-    if (!search) return recentCommits;
-
-    return allCommits.filter((commit) => {
-      return (
-        (commit.message || "").toLowerCase().includes(search) ||
-        (commit.author_name || "").toLowerCase().includes(search) ||
-        (commit.hash || "").toLowerCase().includes(search)
-      );
-    });
-  }, [searchTerm, recentCommits, allCommits]);
-
   const contributorEntries = useMemo(
     () =>
       Object.entries(contributors || {}).sort(
@@ -259,18 +141,6 @@ function Board() {
       ),
     [contributors]
   );
-
-  const diffLines = useMemo(
-    () => (commitDiff ? commitDiff.split("\n") : []),
-    [commitDiff]
-  );
-
-  useEffect(() => {
-    setSelectedCommit(null);
-    setCommitDiff("");
-    setCommitError("");
-    activeRequestRef.current = null;
-  }, [repositoryId]);
 
   if (loading) {
     return (
@@ -425,188 +295,6 @@ function Board() {
           <Section>
             <FileAnalysis fileAnalysis={fileAnalysis} repositoryId={repositoryId} />
           </Section>
-
-          {/* Recent Commits */}
-          <Section>
-            <SectionHeader
-              title="Recent commits"
-              subtitle="Latest timeline activity in this repository"
-              icon={GitCommit}
-              action={
-                <div className="relative w-full sm:w-64">
-                  <Search className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-500" />
-                  <input
-                    id="commit-search"
-                    type="text"
-                    aria-label="Search commits by message, author, or hash"
-                    placeholder="Search commits..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full rounded-md border border-slate-800 bg-slate-900/60 py-1.5 pl-8 pr-7 text-xs text-slate-200 placeholder-slate-500 transition-colors focus:border-indigo-500/60 focus:outline-none focus:ring-1 focus:ring-indigo-500/40"
-                  />
-                  {searchTerm && (
-                    <button
-                      type="button"
-                      aria-label="Clear search"
-                      onClick={() => setSearchTerm("")}
-                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-200 transition-colors"
-                    >
-                      <X size={12} />
-                    </button>
-                  )}
-                </div>
-              }
-            />
-
-            {displayedCommits.length === 0 ? (
-              <div className="text-slate-500 text-sm py-10 text-center border border-dashed border-slate-800 rounded-lg">
-                No matching commits found.
-              </div>
-            ) : (
-              <div className="border border-slate-800/80 rounded-lg divide-y divide-slate-800/80 max-h-[440px] overflow-y-auto custom-scrollbar">
-                {displayedCommits.map((commit) => (
-                  <div
-                    key={commit.hash || `${commit.author_name}-${commit.date}`}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`View commit ${commit.message}`}
-                    className="px-3.5 py-3 hover:bg-slate-900/60 focus:bg-slate-900/60 focus:outline-none transition-colors cursor-pointer flex items-center justify-between gap-4 group"
-                    onClick={() => handleSelectCommit(commit.hash)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        handleSelectCommit(commit.hash);
-                      }
-                    }}
-                  >
-                    <div className="min-w-0 space-y-1">
-                      <p className="font-medium text-sm text-slate-200 group-hover:text-white transition-colors truncate">
-                        {commit.message}
-                      </p>
-                      <div className="flex items-center gap-2 text-xs text-slate-500">
-                        <span className="text-slate-400">{commit.author_name}</span>
-                        <span className="text-slate-700">&bull;</span>
-                        <span className="font-mono text-slate-500">{commit.hash ? commit.hash.slice(0, 7) : "hash"}</span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-3 shrink-0">
-                      <p className="text-slate-500 text-xs tabular-nums hidden sm:block">
-                        {new Date(commit.date).toLocaleDateString()}
-                      </p>
-                      <ChevronRight size={14} className="text-slate-600 group-hover:text-indigo-400 group-hover:translate-x-0.5 transition-all" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Section>
-
-          {/* Commit Details Modal / Inspector */}
-          {(loadingCommit || selectedCommit || commitError) && (
-            <Section>
-              <SectionHeader title="Commit inspector" icon={Terminal} />
-
-              {loadingCommit && (
-                <div className="flex items-center gap-2 text-xs text-slate-400 py-8 justify-center">
-                  <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-slate-700 border-t-indigo-400" />
-                  Fetching commit details and patch diff...
-                </div>
-              )}
-
-              {!loadingCommit && commitError && (
-                <div className="text-rose-400 text-xs bg-rose-500/[0.06] border border-rose-500/20 p-3.5 rounded-lg">
-                  {commitError}
-                </div>
-              )}
-
-              {!loadingCommit && selectedCommit && (
-                <div className="space-y-5">
-
-                  {/* Meta Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-px bg-slate-800/80 border border-slate-800/80 rounded-lg overflow-hidden text-xs">
-                    <div className="bg-slate-950 p-3 space-y-1 min-w-0">
-                      <p className="text-slate-500">Commit hash</p>
-                      <p className="text-indigo-300 font-mono font-medium break-all">{selectedCommit.hash}</p>
-                    </div>
-
-                    <div className="bg-slate-950 p-3 space-y-1 min-w-0">
-                      <p className="text-slate-500">Author</p>
-                      <p className="text-slate-200 font-medium truncate">{selectedCommit.author}</p>
-                    </div>
-
-                    <div className="bg-slate-950 p-3 space-y-1 min-w-0">
-                      <p className="text-slate-500">Commit date</p>
-                      <p className="text-slate-300">{selectedCommit.date}</p>
-                    </div>
-
-                    <div className="bg-slate-950 p-3 space-y-1 min-w-0">
-                      <p className="text-slate-500">Message</p>
-                      <p className="text-slate-200 truncate">{selectedCommit.message}</p>
-                    </div>
-                  </div>
-
-                  {/* Changed Files */}
-                  {selectedCommit.files?.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-xs text-slate-500">Files changed ({selectedCommit.files.length})</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {selectedCommit.files.map((file) => (
-                          <span key={file} className="bg-slate-900 border border-slate-800 text-slate-300 font-mono text-[11px] px-2 py-1 rounded-md break-all">
-                            {file}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Code Diff Box */}
-                  <div className="space-y-2.5 pt-1">
-                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5">
-                      <p className="text-xs font-medium text-slate-200 flex items-center gap-1.5">
-                        <Code2 size={13} className="text-slate-500" /> Commit patch
-                      </p>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={copyDiff}
-                          disabled={loadingDiff || !commitDiff}
-                          aria-label="Copy diff to clipboard"
-                          className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-medium px-2.5 py-1.5 rounded-md border border-slate-800 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-500/50"
-                        >
-                          {copiedDiff ? <Check size={12} className="text-emerald-400" /> : <Copy size={12} />}
-                          <span>{copiedDiff ? "Copied" : "Copy diff"}</span>
-                        </button>
-
-                        <button
-                          onClick={downloadDiff}
-                          disabled={loadingDiff || !commitDiff}
-                          aria-label="Download patch file"
-                          className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium px-2.5 py-1.5 rounded-md transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer focus:outline-none focus:ring-1 focus:ring-indigo-400/50"
-                        >
-                          <Download size={12} />
-                          <span>Download patch</span>
-                        </button>
-                      </div>
-                    </div>
-
-                    {loadingDiff ? (
-                      <div className="text-slate-500 text-xs py-8 text-center bg-slate-900/40 rounded-lg border border-slate-800">
-                        Loading patch difference...
-                      </div>
-                    ) : (
-                      <pre className="bg-slate-950 rounded-lg border border-slate-800/80 overflow-x-auto text-xs max-h-96 custom-scrollbar">
-                        {diffLines.map((line, index) => (
-                          <DiffLine key={index} line={line} index={index} />
-                        ))}
-                      </pre>
-                    )}
-                  </div>
-
-                </div>
-              )}
-            </Section>
-          )}
 
           {/* Contributors List Section */}
           <Section>

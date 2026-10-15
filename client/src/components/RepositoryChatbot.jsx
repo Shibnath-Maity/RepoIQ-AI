@@ -17,8 +17,10 @@ import {
 } from "lucide-react";
 
 // ==========================================
-// Logo Mark — two branches merging into one,
-// standing in for "many files, one answer"
+// Logo Mark — a minimal robot glyph (antenna,
+// rounded head, two eyes) standing in for the
+// AI assistant, drawn in the same thin-stroke
+// accent style as the rest of the chat surface.
 // ==========================================
 function LogoMark({ className }) {
   return (
@@ -28,23 +30,56 @@ function LogoMark({ className }) {
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
+      {/* antenna */}
       <path
-        d="M7 8C7 13 10 13 12 15.5"
+        d="M12 3v2.2"
+        stroke="#e8a33d"
+        strokeOpacity="0.55"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      <circle cx="12" cy="2.3" r="1" fill="#e8a33d" />
+
+      {/* head */}
+      <rect
+        x="5"
+        y="6.7"
+        width="14"
+        height="11"
+        rx="3.5"
+        stroke="#e8a33d"
+        strokeOpacity="0.55"
+        strokeWidth="1.6"
+      />
+
+      {/* ears */}
+      <path
+        d="M5 10.7H3.4"
         stroke="#e8a33d"
         strokeOpacity="0.55"
         strokeWidth="1.6"
         strokeLinecap="round"
       />
       <path
-        d="M17 8C17 13 14 13 12 15.5"
+        d="M19 10.7h1.6"
         stroke="#e8a33d"
         strokeOpacity="0.55"
         strokeWidth="1.6"
         strokeLinecap="round"
       />
-      <circle cx="7" cy="6" r="2" stroke="#e8a33d" strokeOpacity="0.55" strokeWidth="1.6" />
-      <circle cx="17" cy="6" r="2" stroke="#e8a33d" strokeOpacity="0.55" strokeWidth="1.6" />
-      <circle cx="12" cy="18" r="2.5" fill="#e8a33d" />
+
+      {/* eyes */}
+      <circle cx="9.4" cy="12.2" r="1.3" fill="#e8a33d" />
+      <circle cx="14.6" cy="12.2" r="1.3" fill="#e8a33d" />
+
+      {/* mouth */}
+      <path
+        d="M9.6 15.3h4.8"
+        stroke="#e8a33d"
+        strokeOpacity="0.55"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }

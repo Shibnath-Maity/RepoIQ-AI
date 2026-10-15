@@ -65,12 +65,16 @@ const LEGEND_ORDER = [
   "test",
 ];
 
+function configFor(type) {
+  return NODE_CONFIG[type] || NODE_CONFIG.default;
+}
+
 /* ==========================================================
    CUSTOM ARCHITECTURE NODE
 ========================================================== */
 
 function ArchitectureNode({ data, selected }) {
-  const config = NODE_CONFIG[data?.type] || NODE_CONFIG.default;
+  const config = configFor(data?.type);
   const Icon = config.icon;
 
   return (
@@ -385,6 +389,14 @@ export default function ArchitectureDiagram({ architecture, height = 650, error 
     return "Low";
   }, [architecture]);
 
+  // Config for the currently selected node, resolved once (with the same
+  // default fallback ArchitectureNode uses) instead of indexing
+  // NODE_CONFIG three separate times in the panel below.
+  const selectedConfig = useMemo(
+    () => (selectedNode ? configFor(selectedNode.data?.type) : null),
+    [selectedNode]
+  );
+
   const handleNodeClick = useCallback((_, node) => setSelectedNode(node), []);
 
   const handleInit = useCallback((instance) => {
@@ -395,6 +407,9 @@ export default function ArchitectureDiagram({ architecture, height = 650, error 
     setSelectedNode(null);
     reactFlowInstanceRef.current?.fitView({ padding: 0.2, minZoom: 0.3, duration: 300 });
   }, []);
+
+  // Stable references so MiniMap doesn't treat these as new props every render.
+  const getMiniMapColor = useCallback((n) => configFor(n.data?.type).color, []);
 
   if (error) {
     return (
@@ -503,8 +518,8 @@ export default function ArchitectureDiagram({ architecture, height = 650, error 
             pannable
             zoomable
             style={{ width: 110, height: 70 }}
-            nodeColor={(n) => NODE_CONFIG[n.data?.type]?.color || "#475569"}
-            nodeStrokeColor={(n) => NODE_CONFIG[n.data?.type]?.color || "#475569"}
+            nodeColor={getMiniMapColor}
+            nodeStrokeColor={getMiniMapColor}
             nodeStrokeWidth={1.5}
             nodeBorderRadius={4}
             maskColor="rgba(2, 6, 13, 0.8)"
@@ -516,7 +531,7 @@ export default function ArchitectureDiagram({ architecture, height = 650, error 
         {legendTypes.length > 0 && (
           <div className="absolute left-3 top-3 z-10 flex max-w-[75%] flex-wrap gap-x-2.5 gap-y-1 rounded-md border border-slate-800 bg-[#0f1218] px-2 py-1.5 sm:left-4 sm:top-4 sm:max-w-md sm:gap-x-3 sm:px-2.5">
             {legendTypes.map((type) => {
-              const cfg = NODE_CONFIG[type] || NODE_CONFIG.default;
+              const cfg = configFor(type);
               const Icon = cfg.icon;
               return (
                 <div key={type} className="flex items-center gap-1.5">
@@ -537,9 +552,9 @@ export default function ArchitectureDiagram({ architecture, height = 650, error 
                 <span
                   className="mt-1 inline-block rounded border px-1.5 py-0.5 font-mono text-[10px] font-medium"
                   style={{
-                    backgroundColor: `${NODE_CONFIG[selectedNode.data?.type]?.color}14`,
-                    borderColor: `${NODE_CONFIG[selectedNode.data?.type]?.color}30`,
-                    color: NODE_CONFIG[selectedNode.data?.type]?.color,
+                    backgroundColor: `${selectedConfig.color}14`,
+                    borderColor: `${selectedConfig.color}30`,
+                    color: selectedConfig.color,
                   }}
                 >
                   {selectedNode.data?.type}

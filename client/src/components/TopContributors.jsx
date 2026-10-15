@@ -111,23 +111,47 @@ export default function TopContributors({
             <div className="p-2.5 rounded-full bg-white/[0.05] text-[#7C8698] mb-2.5">
               <Search size={18} strokeWidth={1.75} />
             </div>
-            <p className="text-sm font-medium text-[#E7EAEF]">
-              No contributors found
-            </p>
-            <p className="text-xs text-[#7C8698] mt-0.5">
-              Try adjusting your search terms
-            </p>
-            {query && (
-              <button
-                onClick={() => setQuery("")}
-                className="mt-3 text-xs font-medium text-sky-400 hover:text-sky-300 transition-colors"
-              >
-                Clear search
-              </button>
+            {contributors.length === 0 ? (
+              // No contributors at all — most likely the active time-range
+              // filter has no commits in it, not a search-box problem.
+              <>
+                <p className="text-sm font-medium text-[#E7EAEF]">
+                  No commit activity in this time range
+                </p>
+                <p className="text-xs text-[#7C8698] mt-0.5">
+                  Try widening the time range filter above
+                </p>
+              </>
+            ) : (
+              // Contributors exist, but the search query matched none of them.
+              <>
+                <p className="text-sm font-medium text-[#E7EAEF]">
+                  No contributors found
+                </p>
+                <p className="text-xs text-[#7C8698] mt-0.5">
+                  Try adjusting your search terms
+                </p>
+                {query && (
+                  <button
+                    onClick={() => setQuery("")}
+                    className="mt-3 text-xs font-medium text-sky-400 hover:text-sky-300 transition-colors"
+                  >
+                    Clear search
+                  </button>
+                )}
+              </>
             )}
           </div>
         ) : (
-          <ul className="space-y-2">
+          <ul
+            className="space-y-2 max-h-[520px] overflow-y-auto pr-1 -mr-1
+              [scrollbar-width:thin] [scrollbar-color:rgba(255,255,255,0.15)_transparent]
+              [&::-webkit-scrollbar]:w-1.5
+              [&::-webkit-scrollbar-track]:bg-transparent
+              [&::-webkit-scrollbar-thumb]:bg-white/[0.12]
+              [&::-webkit-scrollbar-thumb]:rounded-full
+              [&::-webkit-scrollbar-thumb:hover]:bg-white/[0.2]"
+          >
             {filtered.map((contributor, index) => {
               const commits = contributor.commits || 0;
               const pct =

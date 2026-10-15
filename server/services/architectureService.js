@@ -71,18 +71,27 @@ const ENTRY_FILE_CANDIDATES = ["index.js", "server.js", "app.js", "main.js", "in
 
 /* ==========================================================
    FRAMEWORK DETECTION
+
+   `cache` is a per-buildArchitecture-call Map<absPath, parsedJsonOrNull>
+   so the same package.json is never read/parsed more than once across
+   detectFramework() and buildArchitectureFlow(), even though both need
+   dependency info (and both may look at root + client/ + server/).
 ========================================================== */
 
-function readJsonSafe(filePath) {
+function readJsonCached(filePath, cache) {
+  if (cache.has(filePath)) return cache.get(filePath);
+  let parsed = null;
   try {
-    return JSON.parse(fs.readFileSync(filePath, "utf8"));
+    parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
   } catch {
-    return null;
+    parsed = null;
   }
+  cache.set(filePath, parsed);
+  return parsed;
 }
 
-function getDependencies(rootPath) {
-  const pkg = readJsonSafe(path.join(rootPath, "package.json"));
+function getDependencies(rootPath, cache) {
+  const pkg = readJsonCached(path.join(rootPath, "package.json"), cache);
   if (!pkg) return {};
   return { ...pkg.dependencies, ...pkg.devDependencies };
 }
@@ -91,13 +100,13 @@ function getDependencies(rootPath) {
  * Merges dependencies from the repo root plus, when present, dedicated
  * client/ and server/ package.json files (common in split full-stack repos).
  */
-function getAllDependencies(rootPath) {
-  let deps = getDependencies(rootPath);
+function getAllDependencies(rootPath, cache) {
+  let deps = getDependencies(rootPath, cache);
 
   for (const name of [...FRONTEND_ROOT_NAMES, ...BACKEND_ROOT_NAMES]) {
     const sub = path.join(rootPath, name);
     if (fs.existsSync(sub) && fs.statSync(sub).isDirectory()) {
-      deps = { ...deps, ...getDependencies(sub) };
+      deps = { ...deps, ...getDependencies(sub, cache) };
     }
   }
 
@@ -112,7 +121,7 @@ function hasViteConfig(dirPath) {
   );
 }
 
-function detectFramework(rootPath) {
+function detectFramework(rootPath, cache) {
   const exists = (file) => fs.existsSync(path.join(rootPath, file));
 
   if (exists("next.config.js") || exists("next.config.mjs") || exists("next.config.ts")) {
@@ -139,16 +148,16 @@ function detectFramework(rootPath) {
         .map((name) => path.join(rootPath, name))
         .find((dir) => fs.existsSync(dir) && hasViteConfig(dir));
 
-  const rootDeps = getDependencies(rootPath);
+  const rootDeps = getDependencies(rootPath, cache);
   const feDeps = { ...rootDeps };
   const beDeps = { ...rootDeps };
   for (const name of FRONTEND_ROOT_NAMES) {
     const sub = path.join(rootPath, name);
-    if (fs.existsSync(sub)) Object.assign(feDeps, getDependencies(sub));
+    if (fs.existsSync(sub)) Object.assign(feDeps, getDependencies(sub, cache));
   }
   for (const name of BACKEND_ROOT_NAMES) {
     const sub = path.join(rootPath, name);
-    if (fs.existsSync(sub)) Object.assign(beDeps, getDependencies(sub));
+    if (fs.existsSync(sub)) Object.assign(beDeps, getDependencies(sub, cache));
   }
 
   let frontendName = null;
@@ -520,10 +529,20 @@ function extractImportSpecifiers(content) {
   return [...specifiers];
 }
 
-function resolveRelativeImport(fromFile, specifier) {
+/**
+ * Resolves a relative import to an absolute file path (or null).
+ * `statCache` is shared across an entire buildArchitectureFlow() call:
+ * many files in a codebase import the same shared module (e.g. a logger
+ * or a constants file), so caching by resolved base path avoids re-running
+ * the same handful of fs.statSync probes over and over.
+ */
+function resolveRelativeImport(fromFile, specifier, statCache) {
   if (!specifier.startsWith(".")) return null;
 
   const base = path.resolve(path.dirname(fromFile), specifier);
+
+  if (statCache.has(base)) return statCache.get(base);
+
   const candidates = [
     base,
     `${base}.js`,
@@ -536,13 +555,17 @@ function resolveRelativeImport(fromFile, specifier) {
     path.join(base, "index.tsx"),
   ];
 
-  return candidates.find((candidate) => {
-    try {
-      return fs.statSync(candidate).isFile();
-    } catch {
-      return false;
-    }
-  }) || null;
+  const resolved =
+    candidates.find((candidate) => {
+      try {
+        return fs.statSync(candidate).isFile();
+      } catch {
+        return false;
+      }
+    }) || null;
+
+  statCache.set(base, resolved);
+  return resolved;
 }
 
 /** Walks up from a file's directory to find the nearest ancestor whose name is a known layer. */
@@ -657,32 +680,37 @@ function backendNodeIdForLayer(layerName) {
    ARCHITECTURE FLOW (repository-specific, dynamic)
 ========================================================== */
 
-function buildArchitectureFlow(framework, tree, rootPath, metrics) {
+function buildArchitectureFlow(framework, tree, rootPath, metrics, jsonCache) {
   const nodes = [];
   const edges = [];
 
+  // O(1) membership checks instead of nodes.some()/edges.some() array scans,
+  // which mattered once the import-detection pass below started calling
+  // addNode/addEdge potentially hundreds of times on larger repos.
+  const nodeIds = new Set();
+  const edgeKeys = new Set();
+
   const addNode = (id, label, type, description) => {
-    if (!nodes.some((n) => n.id === id)) {
+    if (!nodeIds.has(id)) {
+      nodeIds.add(id);
       nodes.push({ id, label, type, description });
     }
   };
 
   const addEdge = (source, target, label) => {
     if (source === target) return;
-    if (
-      nodes.some((n) => n.id === source) &&
-      nodes.some((n) => n.id === target) &&
-      !edges.some((e) => e.source === source && e.target === target)
-    ) {
-      edges.push({ source, target, label });
-    }
+    if (!nodeIds.has(source) || !nodeIds.has(target)) return;
+    const key = `${source}->${target}`;
+    if (edgeKeys.has(key)) return;
+    edgeKeys.add(key);
+    edges.push({ source, target, label });
   };
 
-  const nodeExists = (id) => nodes.some((n) => n.id === id);
+  const nodeExists = (id) => nodeIds.has(id);
 
   /* ---------- Gather signals ---------- */
 
-  const deps = getAllDependencies(rootPath);
+  const deps = getAllDependencies(rootPath, jsonCache);
   const entryFile = findEntryFile(rootPath);
   const hasInlineHttpEndpoints = detectInlineHttpEndpoints(entryFile);
 
@@ -853,6 +881,10 @@ function buildArchitectureFlow(framework, tree, rootPath, metrics) {
     ...Object.entries(beLayers).map(([layer, relPath]) => ({ layer, relPath, nodeIdFor: backendNodeIdForLayer })),
   ];
 
+  // Shared across every file/specifier processed below - see
+  // resolveRelativeImport() for why this matters.
+  const statCache = new Map();
+
   for (const { relPath, nodeIdFor } of layerDirEntries) {
     const absDir = path.join(rootPath, relPath);
     const files = collectCodeFiles(absDir);
@@ -866,7 +898,7 @@ function buildArchitectureFlow(framework, tree, rootPath, metrics) {
       if (!sourceLayer) continue;
 
       for (const specifier of specifiers) {
-        const resolved = resolveRelativeImport(filePath, specifier);
+        const resolved = resolveRelativeImport(filePath, specifier, statCache);
         if (!resolved) continue;
 
         const targetLayer = getLayerForPath(resolved, rootPath);
@@ -936,11 +968,17 @@ function buildArchitecture(repoPath) {
   // Fresh, call-local metrics object - safe for concurrent multi-user analysis.
   const metrics = createMetrics();
 
+  // Fresh, call-local package.json cache - avoids re-reading/re-parsing the
+  // same package.json files across detectFramework() and
+  // buildArchitectureFlow() within a single build, while staying safe for
+  // concurrent calls (no shared/module-level state).
+  const jsonCache = new Map();
+
   console.log("🏗️ Building repository architecture...");
 
   const tree = scanDirectory(repoPath, repoPath, metrics, 0);
-  const framework = detectFramework(repoPath);
-  const { nodes, edges, signals } = buildArchitectureFlow(framework, tree, repoPath, metrics);
+  const framework = detectFramework(repoPath, jsonCache);
+  const { nodes, edges, signals } = buildArchitectureFlow(framework, tree, repoPath, metrics, jsonCache);
   const score = calculateArchitectureScore(metrics, signals);
 
   const risks = [

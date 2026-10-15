@@ -885,24 +885,94 @@ function DownloadRepositoryReport(props) {
       // ==================================================
       // 12. ARCHITECTURE
       // ==================================================
-      if (architecture) {
-        addHeading("Architecture & Structure", { eyebrow: "Layout" });
+      // Always shown — a heading with truly nothing under it looks broken,
+      // so every branch below either renders real content or we fall
+      // through to an explicit "not available" line at the end.
+      addHeading("Architecture & Structure", { eyebrow: "Layout" });
+      let architectureRendered = false;
 
-        if (typeof architecture === "string") {
+      if (architecture) {
+        if (typeof architecture === "string" && architecture.trim()) {
           doc.setFontSize(8.5);
           doc.setFont("courier", "normal");
           const archLines = doc.splitTextToSize(architecture, CONTENT_W);
           checkPageOverflow(archLines.length * 4.5);
           doc.text(archLines, PAGE_LEFT, y);
           y += archLines.length * 4.5 + 6;
-        } else if (Array.isArray(architecture.structure || architecture.directories)) {
+          architectureRendered = true;
+        } else if (Array.isArray(architecture.structure || architecture.directories) &&
+          (architecture.structure || architecture.directories).length > 0) {
           const dirs = architecture.structure || architecture.directories;
           addTable(
             ["Directory / Module", "Description / Purpose"],
             dirs.map((d) => [d.name || d.path, d.description || d.type || "Source Module"]),
             [60, 110]
           );
+          architectureRendered = true;
+        } else if (Array.isArray(architecture.flow?.nodes) && architecture.flow.nodes.length > 0) {
+          // This is the shape the interactive Architecture Diagram elsewhere
+          // in the app actually uses (architecture.flow.nodes / .edges) —
+          // the previous string/structure-only checks silently skipped it.
+          const nodes = architecture.flow.nodes;
+          const edges = Array.isArray(architecture.flow.edges) ? architecture.flow.edges : [];
+
+          addHeading("Components", { subheading: true });
+          addTable(
+            ["Component", "Type / Layer", "Description"],
+            nodes.map((n) => [
+              n.label || n.name || n.id || "Component",
+              n.type || n.layer || n.category || "-",
+              n.description || n.details || "-",
+            ]),
+            [50, 40, 80]
+          );
+
+          if (edges.length > 0) {
+            const nodeLabel = (id) => {
+              const match = nodes.find((n) => n.id === id);
+              return match?.label || match?.name || safeStr(id, "Unknown");
+            };
+
+            addHeading("Data Flow", { subheading: true });
+            addTable(
+              ["From", "To", "Relationship"],
+              edges.map((e) => [
+                nodeLabel(e.source ?? e.from),
+                nodeLabel(e.target ?? e.to),
+                e.label || e.type || "-",
+              ]),
+              [65, 65, 40]
+            );
+          }
+          architectureRendered = true;
+        } else if (typeof architecture === "object") {
+          // Generic fallback: surface whatever key/value pairs the backend
+          // actually sent rather than silently dropping data that doesn't
+          // match one of the specific shapes above.
+          const entries = Object.entries(architecture).filter(
+            ([, value]) => value !== null && value !== undefined && value !== ""
+          );
+
+          if (entries.length > 0) {
+            addTable(
+              ["Field", "Value"],
+              entries.map(([key, value]) => [
+                key,
+                Array.isArray(value)
+                  ? `${value.length} item(s)`
+                  : typeof value === "object"
+                  ? "See detailed view in app"
+                  : safeStr(value),
+              ]),
+              [60, 110]
+            );
+            architectureRendered = true;
+          }
         }
+      }
+
+      if (!architectureRendered) {
+        addLine("Architecture Status", "Architecture data is not available for this analysis.");
       }
 
       // ==================================================
@@ -927,18 +997,40 @@ function DownloadRepositoryReport(props) {
       addHeading("AI Repository Summary", { eyebrow: "Intelligence" });
 
       const aiRepoSummary = insights?.repositorySummary || summary || null;
+      let aiSummaryRendered = false;
 
       if (aiRepoSummary) {
-        if (typeof aiRepoSummary === "string") {
+        if (typeof aiRepoSummary === "string" && aiRepoSummary.trim()) {
           addBullets([aiRepoSummary]);
+          aiSummaryRendered = true;
         } else if (typeof aiRepoSummary === "object") {
-          if (aiRepoSummary.purpose) addLine("Repository Purpose", aiRepoSummary.purpose);
-          if (aiRepoSummary.mainStack) addLine("Main Technologies", aiRepoSummary.mainStack);
-          if (aiRepoSummary.activityOverview) addLine("Development Activity", aiRepoSummary.activityOverview);
-          if (aiRepoSummary.criticalAreas) addLine("Important Code Areas", aiRepoSummary.criticalAreas);
-          if (aiRepoSummary.healthSummary) addLine("Current Repository Health", aiRepoSummary.healthSummary);
+          if (aiRepoSummary.purpose) {
+            addLine("Repository Purpose", aiRepoSummary.purpose);
+            aiSummaryRendered = true;
+          }
+          if (aiRepoSummary.mainStack) {
+            addLine("Main Technologies", aiRepoSummary.mainStack);
+            aiSummaryRendered = true;
+          }
+          if (aiRepoSummary.activityOverview) {
+            addLine("Development Activity", aiRepoSummary.activityOverview);
+            aiSummaryRendered = true;
+          }
+          if (aiRepoSummary.criticalAreas) {
+            addLine("Important Code Areas", aiRepoSummary.criticalAreas);
+            aiSummaryRendered = true;
+          }
+          if (aiRepoSummary.healthSummary) {
+            addLine("Current Repository Health", aiRepoSummary.healthSummary);
+            aiSummaryRendered = true;
+          }
         }
-      } else {
+      }
+
+      // Falls back whenever nothing above actually printed — whether
+      // aiRepoSummary was entirely absent, or present but shaped with
+      // different keys than this report expects.
+      if (!aiSummaryRendered) {
         addLine("Repository Purpose", `Mainly uses ${languages[0]?.language || "software engineering constructs"} across ${totalFiles} tracked files.`);
         addLine("Main Stack", languages.map((l) => l.language || l.name).join(", ") || "Data unavailable");
         addLine("Overall Activity", `${totalCommits} total commits made by ${contributorCount} contributor(s).`);
@@ -967,7 +1059,18 @@ function DownloadRepositoryReport(props) {
         ],
       };
 
-      const findingsData = keyFindings || insights?.keyFindings || defaultFindings;
+      // Only trust the backend's findings object if it actually has
+      // content under the keys this report knows how to render; otherwise
+      // an object shaped with different key names would silently render
+      // an empty section instead of falling back.
+      const rawFindings = keyFindings || insights?.keyFindings || null;
+      const rawFindingsHasContent =
+        rawFindings &&
+        (rawFindings.strengths?.length ||
+          rawFindings.concerns?.length ||
+          rawFindings.patterns?.length ||
+          rawFindings.risks?.length);
+      const findingsData = rawFindingsHasContent ? rawFindings : defaultFindings;
 
       if (findingsData.strengths?.length) {
         addHeading("Strengths", { subheading: true });
@@ -1008,7 +1111,16 @@ function DownloadRepositoryReport(props) {
         },
       ];
 
-      const recList = (recommendations.length ? recommendations : insights?.recommendations || defaultRecs);
+      // NOTE: the previous `insights?.recommendations || defaultRecs` check
+      // used `||`, which treats an empty array `[]` as truthy — so a
+      // backend response with `recommendations: []` would silently produce
+      // a blank section instead of falling back. All three sources are now
+      // checked by `.length` explicitly.
+      const recList = recommendations.length
+        ? recommendations
+        : insights?.recommendations?.length
+        ? insights.recommendations
+        : defaultRecs;
 
       recList.forEach((r) => {
         const prio = (r.priority || "MEDIUM").toUpperCase();
@@ -1103,7 +1215,7 @@ function DownloadRepositoryReport(props) {
       // ==================================================
       addHeading("Final Engineering Conclusion", { eyebrow: "Conclusion" });
 
-      const conc = conclusion || {
+      const defaultConclusion = {
         overallAssessment: `The repository '${repoName}' demonstrates an overall health score of ${overallHealthScore}/100 based on ${totalFiles} tracked files and ${totalCommits} commits.`,
         workingWell: [
           `Clear main language implementation in ${languages[0]?.language || "the primary stack"}.`,
@@ -1122,6 +1234,18 @@ function DownloadRepositoryReport(props) {
           "Track hotspot evolution across future commit milestones.",
         ],
       };
+
+      // Same guard as Key Findings above: only use the passed-in
+      // conclusion if it actually has content under a key this report
+      // renders, otherwise fall back so the section is never empty.
+      const rawConclusionHasContent =
+        conclusion &&
+        (conclusion.overallAssessment ||
+          conclusion.workingWell?.length ||
+          conclusion.needsAttention?.length ||
+          conclusion.topPriorities?.length ||
+          conclusion.nextSteps?.length);
+      const conc = rawConclusionHasContent ? conclusion : defaultConclusion;
 
       if (conc.overallAssessment) {
         addHeading("Overall Assessment", { subheading: true });
