@@ -1,5 +1,5 @@
 const { CohereClientV2 } = require("cohere-ai");
-const { ChromaClient } = require("chromadb");
+const { CloudClient } = require("chromadb");
 
 // ==========================================
 // RAG / EMBEDDING CONFIGURATION
@@ -18,6 +18,11 @@ const { ChromaClient } = require("chromadb");
 //   RAG_RATE_LIMIT_COOLDOWN_MS        (default: 60000)
 //   RAG_ACTIVE_PROVIDER_CACHE_MS      (default: 60000)
 //   RAG_EMBED_VERBOSE=true            (log every successful embedding)
+//
+// Chroma Cloud env vars (required):
+//   CHROMA_API_KEY
+//   CHROMA_TENANT
+//   CHROMA_DATABASE
 //
 // For backward compatibility, the legacy COHERE_API_KEY is used as
 // Cohere key 1 when RAG_COHERE_API_KEY_1 is not set.
@@ -193,13 +198,24 @@ function redact(message) {
 }
 
 // ==========================================
-// ChromaDB
+// ChromaDB (Chroma Cloud)
 // ==========================================
 
-const chroma = new ChromaClient({
-  host: process.env.CHROMA_HOST || "127.0.0.1",
-  port: Number(process.env.CHROMA_PORT) || 8000,
-  ssl: false,
+if (
+  !process.env.CHROMA_API_KEY ||
+  !process.env.CHROMA_TENANT ||
+  !process.env.CHROMA_DATABASE
+) {
+  console.warn(
+    "⚠️ WARNING: Chroma Cloud is not fully configured " +
+      "(CHROMA_API_KEY / CHROMA_TENANT / CHROMA_DATABASE)."
+  );
+}
+
+const chroma = new CloudClient({
+  apiKey: process.env.CHROMA_API_KEY,
+  tenant: process.env.CHROMA_TENANT,
+  database: process.env.CHROMA_DATABASE,
 });
 
 // ==========================================
